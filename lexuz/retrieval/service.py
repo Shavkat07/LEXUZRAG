@@ -42,6 +42,7 @@ class LegalSearchService:
         top_k: int = 5,
         candidates_k: int = 30,
         use_reranker: bool = True,
+        as_of_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Полный цикл Legal RAG поиска:
@@ -74,6 +75,7 @@ class LegalSearchService:
                 query=query,
                 results=candidates,
                 top_k=top_k,
+                as_of_date=as_of_date,
             )
         else:
             reranked = [

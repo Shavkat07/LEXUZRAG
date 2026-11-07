@@ -1046,3 +1046,57 @@ def test_labor_leave_exact_question_regression(setup_test_environment):
     assert cit["chunk_id"] in [c["chunk_id"] for c in item["contexts"]]
 
 
+def test_labor_leave_cyrillic_question_regression(setup_test_environment):
+    """
+    Проверяет корректность синтеза ответа на узбекской кириллице (uz-Cyrl):
+    1. Ответ полностью на кириллице без латинской мешанины.
+    2. Упоминание 21 календарного дня.
+    3. Отсутствие процедурных санкций.
+    """
+    client = setup_test_environment
+    payload = {
+        "run_id": "eval-regression-cyrl",
+        "batch_id": "b-labor-leave-cyrl",
+        "batch_index": 1,
+        "total_batches": 1,
+        "options": {
+            "top_k": 5,
+            "return_contexts": True,
+        },
+        "items": [
+            {
+                "id": "q_debug_cyrl",
+                "question": "Меҳнат таътилининг энг кам муддати қанча ?",
+                "language": "uz-Cyrl",
+            }
+        ],
+    }
+
+    res = client.post("/v1/rag/batch", json=payload, headers=AUTH_HEADER)
+    assert res.status_code == 200
+    data = res.json()
+    item = data["results"][0]
+
+    assert item["status"] == "ok"
+    assert item["answer_language"] == "uz-Cyrl"
+    assert "йигирма бир календар" in item["answer"].lower() or "21" in item["answer"]
+    assert "aybdor shaxslar" not in item["answer"].lower()
+    assert "Меҳнат кодекси" in item["answer"]
+
+
+def test_clean_doc_title_all_formats():
+    """Тестирует надежное очищение заголовков от префиксов номеров и дат."""
+    from lexuz.api.engine import RAGEngine
+    samples = [
+        ("28.10.2022. O'zbekiston Respublikasining Mehnat kodeksi", "O'zbekiston Respublikasining Mehnat kodeksi"),
+        ("743-son 06.09.2019. Mehnat bozorida chora-tadbirlar", "Mehnat bozorida chora-tadbirlar"),
+        ("133-son 11.03.1997. Qaror matni", "Qaror matni"),
+        ("O'RQ-994-son 07.11.2024. Qonun matni", "Qonun matni"),
+        ("PQ-415-son 14.07.2006. Qaror", "Qaror"),
+        ("1572-сон 06.05.2006. Об утверждении правил", "Об утверждении правил"),
+    ]
+    for inp, expected in samples:
+        assert RAGEngine.clean_doc_title(inp) == expected, f"Failed for {inp}"
+
+
+

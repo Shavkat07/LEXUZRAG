@@ -30,7 +30,7 @@ from lexuz.api.schemas import (
     OptionsRequest,
     SystemInfo,
 )
-from lexuz.common.translit import cyr_to_lat, is_cyrillic, normalize_apostrophes
+from lexuz.common.translit import cyr_to_lat, is_cyrillic, lat_to_cyr, normalize_apostrophes
 from lexuz.retrieval.models import RerankedResult, SearchResult
 from lexuz.retrieval.service import LegalSearchService
 
@@ -237,11 +237,15 @@ class RAGEngine:
 
     @staticmethod
     def clean_doc_title(doc_title: str) -> str:
-        """Очищает заголовок документа от лишних дат в начале и неразрывных пробелов."""
+        """Очищает заголовок документа от лишних номеров/дат в начале и неразрывных пробелов."""
         if not doc_title:
             return ""
         title = doc_title.replace("\xa0", " ").strip()
-        title = re.sub(r"^\d{2}\.\d{2}\.\d{4}\.\s*", "", title)
+        title = re.sub(
+            r"^(?:[\w\d\-\/\.\'\’\‘\ʻ\ʼ]+-son\s+|[\w\d\-\/\.\'\’\‘\ʻ\ʼ]+-сон\s+)?(?:\d{2}\.\d{2}\.\d{4}\.\s*)?",
+            "",
+            title,
+        )
         return title.strip()
 
     @staticmethod
@@ -290,7 +294,7 @@ class RAGEngine:
         q_lower = normalize_apostrophes(question.lower())
         q_words = set(re.findall(r"\b\w{3,}\b", q_lower))
 
-        is_duration = any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "ta'til", "срок", "длительност", "отпуск"])
+        is_duration = any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "ta'til", "муддат", "қанча", "неча кун", "таътил", "срок", "длительност", "отпуск"])
         is_amount = any(w in q_lower for w in ["summa", "miqdor", "bhm", "so'm", "foiz", "%", "размер", "сумма"])
         is_liability = any(w in q_lower for w in ["javobgar", "jarima", "jazo", "buzilish", "ответствен", "штраф"])
 
@@ -301,16 +305,31 @@ class RAGEngine:
             overlap = len(q_words & s_words)
             score = overlap * 2.5
 
-            if not is_liability and ("buzilishida aybdor" in s_lower or "javob beradilar" in s_lower or "виновные лица" in s_lower):
-                score -= 15.0
+            if not is_liability and any(
+                phrase in s_lower
+                for phrase in [
+                    "buzilishida aybdor", "javob beradilar", "виновные лица несут",
+                    "ijrosini nazorat qilish", "rasmiy e'lon qilingan kundan",
+                    "контроль за исполнением возложить", "со дня его официального опубликования",
+                ]
+            ):
+                score -= 30.0
 
             if is_duration:
                 if any(w in s_lower for w in ["kalendar kun", "ish kuni", "kunlik", "календарных дней", "рабочих дней", "дней", "года", "лет"]):
                     score += 5.0
+                if any(w in s_lower for w in ["har yilgi asosiy eng kam", "asosiy eng kam", "основного минимального"]):
+                    score += 6.0
                 if any(w in s_lower for w in ["davomiyligi", "muddati", "kam bo'lmagan", "kam bo'lmasligi", "tashkil etadi", "составляет", "не менее"]):
                     score += 4.0
-                if any(w in s_lower for w in ["yigirma", "o'n", "bir", "ikki", "uch", "to'rt", "besh", "21", "15", "30", "три", "двадцать"]):
+                if any(w in s_lower for w in ["yigirma bir", "двадцать один", "yigirma", "o'n", "bir", "ikki", "uch", "to'rt", "besh", "21", "15", "30", "три", "двадцать"]):
                     score += 3.0
+                if not any(w in q_lower for w in ["qo'shimcha", "qoshimcha", "дополнительн"]):
+                    if any(w in s_lower for w in ["qo'shimcha ta'til", "qo'shimcha mehnat ta'tili", "дополнительный отпуск", "дополнительного отпуска"]):
+                        score -= 8.0
+                if not any(w in q_lower for w in ["yosh", "bola", "voyaga yetmagan", "nogiron", "homilador", "ёш", "бола", "ногирон", "дети", "инвалид"]):
+                    if any(w in s_lower[:100] for w in ["o'n sakkiz yosh", "ўн саккиз ёш", "nogironligi bo'lgan", "ногирон", "homilador"]):
+                        score -= 8.0
 
             if is_amount:
                 if any(w in s_lower for w in ["so'm", "bhm", "foiz", "%", "baravari", "сум", "бхм"]):
@@ -338,7 +357,7 @@ class RAGEngine:
         q_lower = normalize_apostrophes(question.lower())
         q_words = set(re.findall(r"\b\w{3,}\b", q_lower))
 
-        is_duration = any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "ta'til", "срок", "длительност", "отпуск"])
+        is_duration = any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "ta'til", "муддат", "қанча", "неча кун", "таътил", "срок", "длительност", "отпуск"])
         is_amount = any(w in q_lower for w in ["summa", "miqdor", "bhm", "so'm", "foiz", "%", "размер", "сумма"])
         is_liability = any(w in q_lower for w in ["javobgar", "jarima", "jazo", "buzilish", "ответствен", "штраф"])
 
@@ -355,18 +374,33 @@ class RAGEngine:
 
                 score = overlap * 2.5
 
-                # Штраф за типовые декларативные санкции
-                if not is_liability and ("buzilishida aybdor" in s_lower or "javob beradilar" in s_lower or "виновные лица несут" in s_lower):
-                    score -= 15.0
+                # Штраф за типовые декларативные санкции / процедурные статьи
+                if not is_liability and any(
+                    phrase in s_lower
+                    for phrase in [
+                        "buzilishida aybdor", "javob beradilar", "виновные лица несут",
+                        "ijrosini nazorat qilish", "rasmiy e'lon qilingan kundan",
+                        "контроль за исполнением возложить", "со дня его официального опубликования",
+                    ]
+                ):
+                    score -= 30.0
 
                 # Интент срока / продолжительности
                 if is_duration:
                     if any(w in s_lower for w in ["kalendar kun", "ish kuni", "kunlik", "календарных дней", "рабочих дней", "дней", "года", "лет"]):
                         score += 5.0
+                    if any(w in s_lower for w in ["har yilgi asosiy eng kam", "asosiy eng kam", "основного минимального"]):
+                        score += 6.0
                     if any(w in s_lower for w in ["davomiyligi", "muddati", "kam bo'lmagan", "kam bo'lmasligi", "tashkil etadi", "составляет", "не менее"]):
                         score += 4.0
-                    if any(w in s_lower for w in ["yigirma", "o'n", "bir", "ikki", "uch", "to'rt", "besh", "21", "15", "30", "три", "двадцать"]):
+                    if any(w in s_lower for w in ["yigirma bir", "двадцать один", "yigirma", "o'n", "bir", "ikki", "uch", "to'rt", "besh", "21", "15", "30", "три", "двадцать"]):
                         score += 3.0
+                    if not any(w in q_lower for w in ["qo'shimcha", "qoshimcha", "дополнительн"]):
+                        if any(w in s_lower for w in ["qo'shimcha ta'til", "qo'shimcha mehnat ta'tili", "дополнительный отпуск", "дополнительного отпуска"]):
+                            score -= 8.0
+                    if not any(w in q_lower for w in ["yosh", "bola", "voyaga yetmagan", "nogiron", "homilador", "ёш", "бола", "ногирон", "дети", "инвалид"]):
+                        if any(w in s_lower[:100] for w in ["o'n sakkiz yosh", "ўн саккиз ёш", "nogironligi bo'lgan", "ногирон", "homilador"]):
+                            score -= 8.0
 
                 # Интент суммы / денег
                 if is_amount:
@@ -451,6 +485,7 @@ class RAGEngine:
                 top_k=options.top_k,
                 candidates_k=max(30, options.top_k * 4),
                 use_reranker=True,
+                as_of_date=options.as_of_date,
             )
             t1 = time.monotonic()
             timing_retrieval_ms = max(1, int((t1 - t0) * 800))
@@ -684,9 +719,12 @@ class RAGEngine:
                 f"Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
             )
         elif target_lang == "uz-Cyrl":
+            quote_cyr = lat_to_cyr(quote) if not is_cyrillic(quote) else quote
+            clean_title_cyr = lat_to_cyr(clean_title) if not is_cyrillic(clean_title) else clean_title
+            art_label_cyr = lat_to_cyr(art_label) if not is_cyrillic(art_label) else art_label
             answer_text = (
-                f"{quote} "
-                f"Ушбу қоида «{clean_title}»нинг {art_label}сида белгиланган [1]."
+                f"{quote_cyr} "
+                f"Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
             )
         else:
             answer_text = (
@@ -730,7 +768,9 @@ class RAGEngine:
                 if target_lang == "ru":
                     answer_text += f" Также согласно «{clean_title2}», {art_label2} [2]."
                 elif target_lang == "uz-Cyrl":
-                    answer_text += f" Шунингдек, «{clean_title2}»нинг {art_label2}сида [2]."
+                    clean_title2_cyr = lat_to_cyr(clean_title2) if not is_cyrillic(clean_title2) else clean_title2
+                    art_label2_cyr = lat_to_cyr(art_label2) if not is_cyrillic(art_label2) else art_label2
+                    answer_text += f" Шунингдек, «{clean_title2_cyr}»нинг {art_label2_cyr}сида [2]."
                 else:
                     answer_text += f" Shuningdek, «{clean_title2}»ning {art_label2}sida [2]."
                 break

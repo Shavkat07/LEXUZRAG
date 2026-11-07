@@ -18,42 +18,75 @@ logger = logging.getLogger("lexuz.retrieval.reranker")
 DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 
 
+def extract_doc_year(doc_title: str) -> int:
+    """Извлекает год принятия документа из заголовка."""
+    m = re.search(r"\b(\d{2})\.(\d{2})\.(\d{4})\b", doc_title)
+    if m:
+        return int(m.group(3))
+    m2 = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", doc_title)
+    if m2:
+        return int(m2.group(1))
+    return 2026
+
+
+def stem_uz_word(w: str) -> str:
+    """Простой правовой стеммер для узбекского языка."""
+    w = w.lower().replace("'", "").replace("ʻ", "").replace("ʼ", "")
+    for suffix in ["ining", "larga", "larda", "ning", "dagi", "dida", "sida", "lik", "lar", "gi", "ga", "da", "ni", "si", "i"]:
+        if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+            return w[:-len(suffix)]
+    return w
+
+
 def compute_legal_composite_score(
     query: str,
     raw_rerank_score: float,
     result: SearchResult,
+    as_of_date: Optional[str] = None,
 ) -> float:
     """
     Вычисляет композитный правовой скор кандидата:
-    - Семантический скор кросс-энкодера (BGE Reranker)
-    - Гибридный скор первичного поиска Qdrant (Dense + Sparse RRF)
-    - Иерархия нормативно-правовых актов (Кодекс > Закон > Указ > Постановление > Подзаконный акт)
+    - Семантический скор кросс-энкодера (BGE Reranker) — основной вес 80%
+    - Первичный гибридный поиск Qdrant (Dense + Sparse RRF) — вес 5%
+    - Иерархия нормативно-правовых актов и актуальность редакции (Кодекс > Закон > Указ > Постановление)
+    - Статус действия нормы: новые кодексы (2022+) вытесняют утратившие силу (1995)
     - Тип структурной единицы (Статья кодекса/закона имеет приоритет над пунктом подзаконного акта)
     - Совпадение ключевых терминов вопроса в заголовке статьи / breadcrumb
-    - Пенализация раздутых чанков, где норма тонет в таблицах приложений
+    - Пенализация процедурных деклараций ('aybdor shaxslar javob beradilar', 'nazorat qilish yuklansin')
+    - Приоритет общей нормы над узкими демографическими исключениями (для несовершеннолетних, инвалидов)
     """
     q_lower = query.lower()
-    q_words = set(re.findall(r"\b\w{3,}\b", q_lower))
 
     title_lower = result.doc_title.lower()
     unit_title_lower = (result.unit_title or "").lower()
     breadcrumb_str = " ".join(result.breadcrumb).lower() if result.breadcrumb else ""
     content_lower = result.content.lower()
+    doc_year = extract_doc_year(result.doc_title)
 
-    # 1. Иерархия нормативно-правовых актов
+    # 1. Иерархия нормативно-правовых актов и актуальность
     h_boost = 0.0
-    if "kodeks" in title_lower or "кодекс" in title_lower:
-        # Проверяем, что это сам кодекс, а не постановление/закон о введении кодекса
-        if not any(term in title_lower for term in ["amalga oshirish", "tasdiqlash to'g'risida", "o'zgartirish"]):
-            h_boost = 0.09
+    is_code = ("kodeks" in title_lower or "кодекс" in title_lower) and not any(
+        term in title_lower for term in ["amalga oshirish", "tasdiqlash to'g'risida", "o'zgartirish"]
+    )
+
+    as_of_year = int(as_of_date[:4]) if as_of_date and len(as_of_date) >= 4 else 2026
+
+    if doc_year > as_of_year:
+        # Документ принят позже контрольной даты as_of_date
+        h_boost = -0.50
+    elif is_code:
+        # Если кодекс принят в 2020+ (действующий), даем высокий приоритет.
+        # Если старый (до 2020, например Mehnat kodeksi 1995 года), он утратил силу при наличии нового.
+        if doc_year >= 2020:
+            h_boost = 0.10
         else:
-            h_boost = 0.03
+            h_boost = -0.15
     elif any(term in title_lower for term in ["qonun", "закон", "зру", "ўрқ"]):
-        h_boost = 0.06
+        h_boost = 0.05 if doc_year >= 2018 else 0.01
     elif any(term in title_lower for term in ["farmon", "указ", "пф"]):
-        h_boost = 0.03
+        h_boost = 0.02
     elif any(term in title_lower for term in ["qaror", "постановление", "пкм", "пп"]):
-        h_boost = 0.01
+        h_boost = 0.00
 
     # 2. Тип структурной единицы: статья закона/кодекса содержит общую правовую норму
     u_boost = 0.0
@@ -62,40 +95,91 @@ def compute_legal_composite_score(
     elif result.unit_type == "clause":
         u_boost = 0.01
 
-    # 3. Совпадение темы вопроса с заголовком статьи / рубрики (Breadcrumb)
+    # 3. Совпадение темы вопроса с заголовком статьи / рубрики (Breadcrumb) с учетом стемминга
     target_text = f"{unit_title_lower} {breadcrumb_str}"
-    target_words = set(re.findall(r"\b\w{3,}\b", target_text))
-    title_overlap = len(q_words & target_words)
+    q_stems = {stem_uz_word(w) for w in re.findall(r"\b\w{3,}\b", q_lower)}
+    target_stems = {stem_uz_word(w) for w in re.findall(r"\b\w{3,}\b", target_text)}
+    title_overlap = len(q_stems & target_stems)
     t_boost = min(0.08, title_overlap * 0.02)
 
-    # 4. Пенализация раздутых чанков и чисто процедурных/санкционных статей
+    # 4. Пенализация процедурных декларативных/санкционных статей
     penalty = 0.0
-    if ("buzilishida aybdor" in content_lower or "javob beradilar" in content_lower) and not any(
-        w in q_lower for w in ["javobgar", "jarima", "jazo", "ответствен"]
+    is_liability_query = any(
+        w in q_lower
+        for w in [
+            "javobgar", "jarima", "jazo", "nazorat", "kuchga kirish",
+            "ответствен", "штраф", "наказани", "контрол", "вступлени",
+        ]
+    )
+    if not is_liability_query:
+        if any(
+            phrase in content_lower
+            for phrase in [
+                "buzilishida aybdor", "javob beradilar", "виновные лица несут",
+                "ijrosini nazorat qilish", "rasmiy e'lon qilingan kundan",
+                "контроль за исполнением возложить", "со дня его официального опубликования",
+            ]
+        ):
+            penalty += 0.15
+
+    # 5. Соответствие интенту вопроса (срок, продолжительность, размер)
+    intent_boost = 0.0
+    if any(
+        w in q_lower
+        for w in [
+            "muddat", "davomiylig", "qancha", "necha kun", "ta'til",
+            "муддат", "қанча", "неча кун", "таътил", "срок", "длительност", "отпуск",
+        ]
     ):
-        if len(result.content) > 2000:
+        if any(
+            w in content_lower
+            for w in [
+                "asosiy eng kam", "kalendar kun", "ish kuni", "davomiyligi",
+                "tashkil etadi", "календар", "дней", "составляет", "не менее",
+            ]
+        ):
+            intent_boost += 0.03
+
+    # 6. Пенализация специальных демографических исключений при общем вопросе
+    is_general_leave = (
+        any(w in q_lower for w in ["ta'til", "таътил", "отпуск"])
+        and not any(
+            w in q_lower
+            for w in [
+                "yosh", "bola", "voyaga yetmagan", "nogiron", "homilador",
+                "ёш", "бола", "ногирон", "дети", "несовершеннолет", "инвалид",
+            ]
+        )
+    )
+    if is_general_leave:
+        if any(
+            w in content_lower[:120]
+            for w in [
+                "o'n sakkiz yosh", "ўн саккиз ёш", "nogironligi bo'lgan", "ногирон", "homilador",
+            ]
+        ):
             penalty += 0.08
 
-    # 5. Соответствие интенту вопроса (срок, продолжительность)
-    intent_boost = 0.0
-    if any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "срок", "длительност"]):
-        if any(w in content_lower for w in ["kalendar kun", "ish kuni", "davomiyligi", "tashkil etadi", "дней", "года", "лет"]):
-            intent_boost += 0.03
+        # Если не спрашивают о дополнительном отпуске, статья об основном имеет приоритет
+        if not any(w in q_lower for w in ["qo'shimcha", "qoshimcha", "дополнительн"]):
+            if any(w in unit_title_lower for w in ["qo'shimcha ta'til", "дополнительн"]):
+                penalty += 0.06
 
     # Первичный retrieval score (от 0.0 до 1.0)
     ret_score = float(result.score) if result.score is not None else 0.0
 
-    # Взвешенная сумма: кросс-энкодер 60%, первичный поиск 25%, правовые приоритеты 15%
+    # Взвешенная сумма: кросс-энкодер 80%, первичный поиск 5%, правовые приоритеты 15%
+    # Возвращаем несжатый скор для точной сортировки (без потери различий из-за min(0.9999))
     composite = (
-        (raw_rerank_score * 0.60)
-        + (ret_score * 0.25)
+        (raw_rerank_score * 0.80)
+        + (ret_score * 0.05)
         + h_boost
         + u_boost
         + t_boost
         + intent_boost
         - penalty
     )
-    return round(float(min(0.9999, max(0.01, composite))), 4)
+    return float(composite)
 
 
 class BGEReranker:
@@ -161,6 +245,7 @@ class BGEReranker:
         results: List[SearchResult],
         top_k: int = 5,
         batch_size: int = 32,
+        as_of_date: Optional[str] = None,
     ) -> List[RerankedResult]:
         """
         Переранжирует список кандидатов SearchResult и возвращает Top-K результатов.
@@ -195,7 +280,7 @@ class BGEReranker:
                     new_bs,
                 )
                 self.clear_cache()
-                return self.rerank(query, results, top_k=top_k, batch_size=new_bs)
+                return self.rerank(query, results, top_k=top_k, batch_size=new_bs, as_of_date=as_of_date)
             raise
         finally:
             self.clear_cache()
@@ -208,19 +293,20 @@ class BGEReranker:
         scores = [float(s) for s in scores]
 
         # Применяем композитный правовой скоринг с учетом иерархии актов
-        scored_results: List[Tuple[float, SearchResult]] = []
+        scored_results: List[Tuple[float, float, SearchResult]] = []
         for s, res in zip(scores, results):
-            comp_score = compute_legal_composite_score(query, s, res)
-            scored_results.append((comp_score, res))
+            comp_score = compute_legal_composite_score(query, s, res, as_of_date=as_of_date)
+            scored_results.append((comp_score, s, res))
 
-        scored_results.sort(key=lambda x: x[0], reverse=True)
+        # Сортируем по некэпированному композитному скору с тай-брейком по сырому кросс-энкодеру
+        scored_results.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
         reranked: List[RerankedResult] = []
-        for rank, (score, res) in enumerate(scored_results[:top_k], start=1):
+        for rank, (score, raw_s, res) in enumerate(scored_results[:top_k], start=1):
             reranked.append(
                 RerankedResult(
                     search_result=res,
-                    rerank_score=round(float(score), 4),
+                    rerank_score=round(float(min(0.9999, max(0.01, score))), 4),
                     rank=rank,
                 )
             )
@@ -237,28 +323,29 @@ class MockReranker:
         results: List[SearchResult],
         top_k: int = 5,
         batch_size: int = 32,
+        as_of_date: Optional[str] = None,
     ) -> List[RerankedResult]:
         if not results:
             return []
 
         query_terms = set(query.lower().split())
 
-        scored: List[Tuple[float, SearchResult]] = []
+        scored: List[Tuple[float, float, SearchResult]] = []
         for r in results:
             doc_terms = set(r.content.lower().split())
             overlap = len(query_terms.intersection(doc_terms))
             base_score = 0.5 + 0.1 * overlap
-            comp_score = compute_legal_composite_score(query, base_score, r)
-            scored.append((comp_score, r))
+            comp_score = compute_legal_composite_score(query, base_score, r, as_of_date=as_of_date)
+            scored.append((comp_score, base_score, r))
 
-        scored.sort(key=lambda x: x[0], reverse=True)
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
         reranked: List[RerankedResult] = []
-        for rank, (score, res) in enumerate(scored[:top_k], start=1):
+        for rank, (score, raw_s, res) in enumerate(scored[:top_k], start=1):
             reranked.append(
                 RerankedResult(
                     search_result=res,
-                    rerank_score=round(float(score), 4),
+                    rerank_score=round(float(min(0.9999, max(0.01, score))), 4),
                     rank=rank,
                 )
             )

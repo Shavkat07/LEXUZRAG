@@ -3,7 +3,7 @@ tests/test_translit.py
 Верификация правил транслитерации и орфографической нормализации (lexuz.common.translit).
 """
 
-from lexuz.common.translit import cyr_to_lat, normalize_apostrophes, normalize_uz_text
+from lexuz.common.translit import cyr_to_lat, lat_to_cyr, normalize_apostrophes, normalize_uz_text
 
 
 def test_apostrophe_normalization():
@@ -103,6 +103,35 @@ def test_cyrillic_legal_corpus():
             f"  Ожидалось: '{expected_lat}'\n"
             f"  Получено:  '{actual}'"
         )
+
+
+def test_lat_to_cyr_transliteration():
+    cases = [
+        (
+            "Har yilgi asosiy eng kam mehnat ta'tilining davomiyligi yigirma bir kalendar kunni tashkil etadi.",
+            "Ҳар йилги асосий энг кам меҳнат таътилининг давомийлиги йигирма бир календар кунни ташкил этади.",
+        ),
+        (
+            "O'zbekiston Respublikasining Mehnat kodeksi",
+            "Ўзбекистон Республикасининг Меҳнат кодекси",
+        ),
+        (
+            "217-modda",
+            "217-модда",
+        ),
+        (
+            "E'lon qilingan sana",
+            "Эълон қилинган сана",
+        ),
+        (
+            "G'alaba va shartnoma",
+            "Ғалаба ва шартнома",
+        ),
+    ]
+    for lat, expected_cyr in cases:
+        actual = lat_to_cyr(lat)
+        assert actual == expected_cyr, f"Failed on {lat}: expected {expected_cyr}, got {actual}"
+
 
 
 if __name__ == "__main__":

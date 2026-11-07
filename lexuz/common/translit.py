@@ -221,3 +221,119 @@ def normalize_uz_text(text: str) -> str:
         return cyr_to_lat(text)
     return normalize_apostrophes(text)
 
+
+LAT_TO_CYR_MAP = {
+    "a": "а", "b": "б", "d": "д", "f": "ф", "g": "г", "h": "ҳ",
+    "i": "и", "j": "ж", "k": "к", "l": "л", "m": "м", "n": "н",
+    "o": "о", "p": "п", "q": "қ", "r": "р", "s": "с", "t": "т",
+    "u": "у", "v": "в", "x": "х", "y": "й", "z": "з",
+    "A": "А", "B": "Б", "D": "Д", "F": "Ф", "G": "Г", "H": "Ҳ",
+    "I": "И", "J": "Ж", "K": "К", "L": "Л", "M": "М", "N": "Н",
+    "O": "О", "P": "П", "Q": "Қ", "R": "Р", "S": "С", "T": "Т",
+    "U": "У", "V": "В", "X": "Х", "Y": "Й", "Z": "З",
+}
+LAT_VOWELS = set("aeiouAEIOU")
+
+
+def lat_to_cyr(text: str) -> str:
+    """
+    Транслитерирует узбекский текст из латиницы в каноническую кириллицу:
+    - o' -> ў, g' -> ғ
+    - sh -> ш, ch -> ч, ts -> ц
+    - yo -> ё, yu -> ю, ya -> я, ye -> е
+    - e -> э (в начале слова/после гласной), е (после согласной)
+    - ' -> ъ (tutuq belgisi)
+    """
+    if not text:
+        return ""
+    text = normalize_apostrophes(text)
+
+    tokens = re.findall(r"[a-zA-Z']+|[^a-zA-Z']+", text)
+    res = []
+
+    for token in tokens:
+        if not re.match(r"[a-zA-Z']+", token):
+            res.append(token)
+            continue
+
+        t_len = len(token)
+        i = 0
+        converted = []
+        is_all_caps = token.isupper() and t_len > 1
+
+        while i < t_len:
+            sub2 = token[i : i + 2]
+            sub2_low = sub2.lower()
+
+            # 1. o' / g'
+            if sub2_low == "o'":
+                converted.append("Ў" if sub2[0].isupper() else "ў")
+                i += 2
+                continue
+            if sub2_low == "g'":
+                converted.append("Ғ" if sub2[0].isupper() else "ғ")
+                i += 2
+                continue
+
+            # 2. sh / ch / ts
+            if sub2_low == "sh":
+                converted.append("Ш" if sub2[0].isupper() else "ш")
+                i += 2
+                continue
+            if sub2_low == "ch":
+                converted.append("Ч" if sub2[0].isupper() else "ч")
+                i += 2
+                continue
+            if sub2_low == "ts":
+                converted.append("Ц" if sub2[0].isupper() else "ц")
+                i += 2
+                continue
+
+            # 3. yo / yu / ya / ye
+            if sub2_low == "yo":
+                converted.append("Ё" if sub2[0].isupper() else "ё")
+                i += 2
+                continue
+            if sub2_low == "yu":
+                converted.append("Ю" if sub2[0].isupper() else "ю")
+                i += 2
+                continue
+            if sub2_low == "ya":
+                converted.append("Я" if sub2[0].isupper() else "я")
+                i += 2
+                continue
+            if sub2_low == "ye":
+                converted.append("Е" if sub2[0].isupper() else "е")
+                i += 2
+                continue
+
+            ch = token[i]
+
+            # 4. Буква 'e / E'
+            if ch in ("e", "E"):
+                prev_ch = token[i - 1] if i > 0 else None
+                if prev_ch is None or prev_ch in LAT_VOWELS or prev_ch == "'":
+                    converted.append("Э" if ch.isupper() else "э")
+                else:
+                    converted.append("Е" if ch.isupper() else "е")
+                i += 1
+                continue
+
+            # 5. Апостроф ' -> ъ (tutuq belgisi)
+            if ch == "'":
+                converted.append("ъ")
+                i += 1
+                continue
+
+            # 6. Базовые буквы
+            if ch in LAT_TO_CYR_MAP:
+                converted.append(LAT_TO_CYR_MAP[ch])
+            else:
+                converted.append(ch)
+            i += 1
+
+        res.append("".join(converted))
+
+    return "".join(res)
+
+
