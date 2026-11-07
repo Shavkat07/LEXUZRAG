@@ -135,3 +135,19 @@ def test_cli_index_and_search_mock(tmp_path: Path):
     finally:
         if manager.collection_exists(TEST_CLI_COLLECTION):
             manager.client.delete_collection(TEST_CLI_COLLECTION)
+
+
+def test_cli_ask_mock():
+    """Проверяет команду 'main.py ask' в режиме --mock."""
+    cmd = [
+        sys.executable,
+        "main.py",
+        "ask",
+        "mehnat ta'tili muddati qancha?",
+        "--mock",
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0
+    assert "LEX.UZ LEGAL RAG AI JAVOBI" in res.stdout
+    assert "Havola qilingan normalar" in res.stdout
+    assert "https://lex.uz/docs/" in res.stdout

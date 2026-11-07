@@ -94,6 +94,29 @@ def main():
     search_p.add_argument("--no-rerank", action="store_true", help="Отключить кросс-энкодер реранкер")
     search_p.add_argument("--raw", action="store_true", help="Вывести сырой JSON вместо форматированного Markdown")
 
+    # ask
+    ask_p = subparsers.add_parser("ask", help="Интерактивный вопрос к юридическому AI-агенту через LLM (Gemini)")
+    ask_p.add_argument("question", type=str, help="Юридический вопрос на узбекском или русском языке")
+    ask_p.add_argument("--top-k", type=int, default=5, help="Количество подтверждающих норм (по умолчанию 5)")
+    ask_p.add_argument("--as-of-date", type=str, default=None, help="Дата среза законодательства (ГГГГ-ММ-ДД)")
+    ask_p.add_argument("--lang", choices=["auto", "uz-Latn", "uz-Cyrl", "ru"], default="auto", help="Целевой язык ответа")
+    ask_p.add_argument("--mock", action="store_true", help="Использовать MockSearchService для тестирования")
+    ask_p.add_argument("--raw", action="store_true", help="Вывести сырой JSON ответа вместо форматированного Markdown")
+
+    # serve
+    serve_p = subparsers.add_parser("serve", help="Запуск FastAPI веб-сервера и REST API")
+    serve_p.add_argument("--host", type=str, default="0.0.0.0", help="Хост для привязки (по умолчанию 0.0.0.0)")
+    serve_p.add_argument("--port", type=int, default=8000, help="Порт для привязки (по умолчанию 8000)")
+    serve_p.add_argument("--reload", action="store_true", help="Включить автоперезагрузку при изменении кода")
+    serve_p.add_argument("--workers", type=int, default=1, help="Количество worker процессов")
+
+    # eval
+    eval_p = subparsers.add_parser("eval", help="Оценка качества RAG пайплайна по Разделу 6 (100 вопросов)")
+    eval_p.add_argument("--dataset", type=Path, default=Path("data/eval_testset_100.csv"), help="Путь к CSV файлу эталонов")
+    eval_p.add_argument("--batch", type=str, default=None, help="Выполнить только указанный батч (например b01)")
+    eval_p.add_argument("--output", type=Path, default=None, help="Путь для сохранения отчета (Markdown/JSON)")
+    eval_p.add_argument("--mock", action="store_true", help="Использовать MockSearchService для тестирования пайплайна")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -214,6 +237,93 @@ def main():
             print(json.dumps(serializable, indent=2, ensure_ascii=False))
         else:
             print(res["rag_context"])
+    elif args.command == "ask":
+        from lexuz.api.engine import RAGEngine, MockSearchService
+        from lexuz.api.schemas import OptionsRequest
+
+        engine = RAGEngine(search_service=MockSearchService() if args.mock else None)
+        options = OptionsRequest(
+            top_k=args.top_k,
+            return_contexts=True,
+            return_debug=True,
+            as_of_date=args.as_of_date,
+            answer_language=args.lang,
+        )
+
+        res = engine.process_item(
+            item_id="cli_q1",
+            question=args.question,
+            item_language=None if args.lang == "auto" else args.lang,
+            options=options,
+        )
+
+        if args.raw:
+            print(res.model_dump_json(indent=2))
+        else:
+            print("\n" + "=" * 70)
+            print("⚖️  LEX.UZ LEGAL RAG AI JAVOBI (ЮРИДИЧЕСКАЯ КОНСУЛЬТАЦИЯ)")
+            print("=" * 70)
+            print(f"Savol: {args.question}")
+            print(f"Holati: {res.status.upper()} | Ishonchlilik: {int(res.confidence * 100)}% | Til: {res.answer_language}\n")
+            print(f"Javob:\n{res.answer}\n")
+            if res.citations:
+                print("-" * 70)
+                print("📚 Havola qilingan normalar (Официальные источники):")
+                for cit in res.citations:
+                    print(f"[{cit.ref}] {cit.doc_title} ({cit.article or cit.chunk_id})")
+                    if cit.url:
+                        print(f"    URL: {cit.url}")
+            print("=" * 70 + "\n")
+    elif args.command == "serve":
+        import uvicorn
+        logger.info(f"Starting Lex.uz Legal RAG FastAPI server on {args.host}:{args.port}...")
+        uvicorn.run(
+            "lexuz.api.app:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            workers=args.workers,
+        )
+    elif args.command == "eval":
+        from lexuz.eval.evaluator import RAGEvaluator, load_benchmark_from_csv, generate_default_100_benchmark, save_benchmark_to_csv
+        from lexuz.api.engine import RAGEngine, MockSearchService
+        from lexuz.api.schemas import OptionsRequest
+
+        csv_file = args.dataset
+        if not csv_file.exists():
+            logger.info("Generating default 100 benchmark testset at %s", csv_file)
+            items = generate_default_100_benchmark()
+            save_benchmark_to_csv(items, csv_file)
+        else:
+            items = load_benchmark_from_csv(csv_file)
+
+        if args.batch:
+            items = [it for it in items if it.batch == args.batch]
+            logger.info("Evaluating batch %s (%d questions)", args.batch, len(items))
+        else:
+            logger.info("Evaluating full testset (%d questions)", len(items))
+
+        engine = RAGEngine(search_service=MockSearchService() if args.mock else None)
+        options = OptionsRequest(top_k=5, return_contexts=True, return_debug=True)
+
+        results = []
+        for it in items:
+            res = engine.process_item(
+                item_id=it.id,
+                question=it.question,
+                item_language=None,
+                options=options,
+            )
+            results.append(res.model_dump())
+
+        summary = RAGEvaluator.evaluate(items, results)
+        md_report = summary.to_markdown()
+        print("\n" + md_report + "\n")
+
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(md_report, encoding="utf-8")
+            logger.info("Report saved to %s", args.output)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,793 @@
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+Nov 3, 2026
+
+· ​@jurabek
+
+1. Maqsad va test ssenariysi
+Jamoa bitta batch endpoint beradi: u 10 tagacha savolni qabul qiladi va har bir savol uchun
+javob, lex.uz manbalari (hujjat + modda) va topilgan kontekst bo'laklarini qaytaradi. Shu
+ma'lumot bilan RAG ning ikki qismini alohida baholaymiz: qidiruv (to'g'ri qonun va modda
+topildimi) va generatsiya (javob to'g'ri va faqat manbaga asoslanganmi).
+Test ssenariysi:
+1. Tester 100 ta savoldan iborat test to'plamini tayyorlaydi (savol + kutilgan javob +
+kutilgan manba). Kutilgan javoblar API ga yuborilmaydi.
+2. Savollar 10 ta batch ga bo'linadi, har birida 10 ta savol, q001 – q100 ID lari bilan.
+3. Batch lar ketma-ket yuboriladi: oldingi batch javobi kelgandan keyin keyingisi ( b01 →
+b10 ).
+
+4. Har bir javob JSON holida saqlanadi ( run_id/b01.json …).
+5. 10 ta batch tugagach, javoblar test to'plami bilan solishtiriladi va 6-bo'limdagi metrikalar
+hisoblanadi.
+6. Tizim o'zgarganda (yangi model, indeks, chunking) xuddi shu 100 savol qayta yuboriladi
+va natijalar run_id bo'yicha taqqoslanadi.
+
+2. Umumiy talablar
+API REST + JSON bo'lishi, /v1 versiyasi bilan ishlashi va bitta so'rovda 10 tagacha savolni
+qabul qilishi kerak.
+Endpoint
+
+Vazifasi
+
+Majburiy
+
+POST /v1/rag/batch
+
+1–10 savolni yuborish, javoblarni olish
+
+Ha
+
+GET
+
+Ha
+
+/v1/rag/batch/{batch_id}
+
+Batch natijasini qayta olish (async rejim yoki
+qayta tekshirish)
+
+POST /v1/rag/query
+
+Bitta savol (debug uchun)
+
+Yo'q
+
+Page 1 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+Endpoint
+
+Vazifasi
+
+Majburiy
+
+GET /v1/meta
+
+Model, embedding, indeks versiyasi, lex.uz
+snapshot sanasi
+
+Ha
+
+GET /v1/health
+
+Servis ishlayaptimi
+
+Ha
+
+Texnik talablar:
+Autentifikatsiya: Authorization: Bearer <API_KEY> header. Test uchun alohida
+kalit.
+Kodlash: Content-Type: application/json; charset=utf-8 . O'zbek lotin, o'zbek
+kirill va rus tilidagi savollar qabul qilinadi; o' , g' , ʻ belgilari buzilmasligi kerak.
+Batch hajmi: items 1–10 ta. 10 dan ko'p bo'lsa 400 .
+Timeout: bitta batch uchun ≤ 120 soniya (sync). Uzoqroq bo'lsa async rejim (5-bo'lim).
+Rate limit: kamida 1 batch/soniya; oshib ketsa 429 + Retry-After .
+Takrorlanuvchanlik: temperature = 0 , seed qo'llab-quvvatlanadi. Bir xil savol bir xil
+indeksda bir xil manbalarni qaytarishi kerak.
+Idempotentlik: bir xil batch_id qayta yuborilsa, saqlangan natija qaytadi (qayta
+hisoblanmaydi).
+Versiyalash: har bir javobda tizim versiyalari ( system obyekti) bo'ladi, aks holda run
+larni taqqoslab bo'lmaydi.
+
+3. Request formati ( POST /v1/rag/batch )
+Har bir batch — bitta JSON: run va batch identifikatorlari, umumiy sozlamalar va 10
+tagacha savol. Kutilgan javob va kutilgan manba so'rovga qo'shilmaydi, ular faqat tester
+tomonida turadi.
+{
+"run_id": "eval-2026-11-03",
+"batch_id": "eval-2026-11-03-b01",
+"batch_index": 1,
+"total_batches": 10,
+"options": {
+"top_k": 5,
+"return_contexts": true,
+"return_debug": true,
+"temperature": 0,
+
+Page 2 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+"seed": 42,
+"as_of_date": "2026-11-01",
+"answer_language": "auto"
+},
+"items": [
+{
+"id": "q001",
+"question": "Yillik asosiy mehnat ta'tilining eng kam muddati qancha?",
+"language": "uz-Latn"
+},
+{
+"id": "q002",
+"question": "Какой срок исковой давности установлен Гражданским
+кодексом?",
+"language": "ru"
+}
+]
+}
+
+Maydon
+
+Turi
+
+Majburiy
+
+Izoh
+
+run_id
+
+string
+
+Ha
+
+Butun 100 savollik test
+sessiyasi ID si
+
+batch_id
+
+string
+
+Ha
+
+Unikal; idempotentlik kaliti
+
+batch_index /
+
+int
+
+Ha
+
+1–10 / 10; log va monitoring
+uchun
+
+options.top_k
+
+int
+
+Yo'q (default
+5)
+
+Nechta kontekst bo'lagi
+qaytarilsin
+
+options.return_contexts
+
+bool
+
+Yo'q (default
+true)
+
+Topilgan bo'laklar matni bilan
+qaytsin
+
+options.return_debug
+
+bool
+
+Yo'q
+
+Qayta yozilgan so'rov, rerank
+ballari, vaqtlar
+
+options.temperature ,
+
+Yo'q
+
+Takrorlanuvchan natija uchun
+
+seed
+
+number,
+int
+
+options.as_of_date
+
+date
+
+Yo'q
+
+Qaysi sanadagi amaldagi
+tahrirga tayanilsin
+
+total_batches
+
+Page 3 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+Maydon
+
+Turi
+
+Majburiy
+
+Izoh
+
+options.answer_language
+
+string
+
+Yo'q
+
+auto = savol tilida; uz-Latn ,
+uz-Cyrl , ru
+
+items[].id
+
+string
+
+Ha
+
+Batch ichida unikal ( q001 –
+q100 )
+
+items[].question
+
+string
+
+Ha
+
+1–2000 belgi
+
+items[].language
+
+string
+
+Yo'q
+
+Ko'rsatilmasa avtomatik
+aniqlanadi
+
+Batch lar ketma-ket yuboriladi: b01 javobi kelgach b02 , va hokazo. Javob kelmasa yoki
+retryable: true xato bo'lsa, o'sha batch_id bilan qayta yuboriladi.
+
+4. Response formati
+Har bir savol uchun javob matnining o'zi yetarli emas: RAG ni tekshirish uchun manbalar
+(citations) va topilgan kontekstlar (contexts) ham kerak. Usiz qidiruv xatosini
+generatsiya xatosidan ajratib bo'lmaydi.
+{
+"run_id": "eval-2026-11-03",
+"batch_id": "eval-2026-11-03-b01",
+"status": "completed",
+"system": {
+"pipeline_version": "0.4.2",
+"llm_model": "<model nomi>",
+"embedding_model": "<embedding nomi>",
+"reranker": "<reranker nomi yoki null>",
+"index_version": "lex-idx-2026-10-28",
+"lex_snapshot_date": "2026-10-28"
+},
+"timing": {
+"received_at": "2026-11-03T10:30:00+05:00",
+"completed_at": "2026-11-03T10:30:41+05:00",
+"total_ms": 41230
+},
+"summary": { "total": 10, "ok": 9, "no_answer": 1, "error": 0 },
+"results": [
+{
+
+Page 4 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+"id": "q001",
+"status": "ok",
+"answer": "Yillik asosiy mehnat ta'tili ... kalendar kunidan kam
+bo'lmasligi kerak [1].",
+"answer_language": "uz-Latn",
+"no_answer": false,
+"confidence": 0.82,
+"citations": [
+{
+"ref": 1,
+"doc_id": "lex:XXXXXXX",
+"doc_title": "O'zbekiston Respublikasining Mehnat kodeksi",
+"doc_type": "kodeks",
+"url": "https://lex.uz/docs/XXXXXXX",
+"article": "XXX-modda",
+"part": "1-qism",
+"edition_date": "YYYY-MM-DD",
+"doc_status": "amalda",
+"chunk_id": "lex:XXXXXXX#art-XXX#p1",
+"quote": "<manbadan aynan olingan matn bo'lagi>"
+}
+],
+"contexts": [
+{
+"rank": 1,
+"chunk_id": "lex:XXXXXXX#art-XXX#p1",
+"doc_id": "lex:XXXXXXX",
+"article": "XXX-modda",
+"text": "<to'liq chunk matni>",
+"retrieval_score": 0.78,
+"rerank_score": 0.91,
+"used_in_answer": true
+}
+],
+"debug": {
+"rewritten_query": "<qayta yozilgan so'rov>",
+"retrieved_total": 50
+},
+"timing": { "retrieval_ms": 320, "rerank_ms": 140, "generation_ms":
+2900, "total_ms": 3410 },
+"usage": { "input_tokens": 3120, "output_tokens": 210 },
+
+Page 5 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+"error": null
+}
+]
+}
+
+Maydon
+
+Majburiy
+
+Nega kerak
+
+results[].id
+
+Ha
+
+Savolni test to'plami bilan bog'lash;
+tartib emas, ID bo'yicha solishtiriladi
+
+results[].status
+
+Ha
+
+ok , no_answer , error , timeout
+
+answer
+
+Ha
+
+Javob; ichida [1] kabi havolalar
+citations[].ref ga mos
+
+no_answer
+
+Ha
+
+Qonunda javob yo'q bo'lsa tizim
+to'qib chiqarmasdan true qaytarishi
+kerak
+
+citations[].doc_id , url
+
+Ha
+
+lex.uz hujjati to'g'ri topilganini
+tekshirish
+
+citations[].article , part
+
+Ha
+
+Modda / qism darajasida aniqlik
+
+citations[].edition_date ,
+
+Ha
+
+Kuchini yo'qotgan yoki eski tahrirga
+tayanmaganini tekshirish
+
+citations[].quote
+
+Ha
+
+Javob manbaga asoslanganini
+(faithfulness) tekshirish
+
+contexts[]
+
+Ha
+
+Retrieval metrikalari: Hit@k,
+Recall@k, MRR
+
+contexts[].retrieval_score ,
+
+Ha
+
+Reranker foyda beryaptimi,
+chegarani tahlil qilish
+
+confidence
+
+Yo'q
+
+Ishonch va to'g'rilik bog'liqligini
+(kalibrovka) ko'rish
+
+debug , usage
+
+Yo'q
+
+Xatolarni tahlil qilish, narxni baholash
+
+timing
+
+Ha
+
+Latency p50 / p95
+
+system
+
+Ha
+
+Run larni versiya bo'yicha taqqoslash
+
+doc_status
+
+rerank_score
+
+Qoidalar:
+
+Page 6 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+results dagi elementlar soni items soniga teng; har bir id bitta marta.
+
+Har bir citations[].chunk_id contexts ichida bo'lishi kerak: tizim ko'rmagan
+manbaga havola bermaydi.
+doc_id lex.uz dagi hujjat raqamiga barqaror bog'langan bo'ladi (indeks qayta
+
+qurilganda o'zgarmaydi).
+
+5. Xatoliklar, statuslar va rejimlar
+Bitta savoldagi xato butun batch ni yiqitmasligi kerak: batch 200 qaytaradi, xato esa o'sha
+savolning status va error maydonida ko'rinadi.
+HTTP kod
+
+Qachon
+
+Tester nima qiladi
+
+200
+
+Batch qayta ishlandi (ba'zi
+savollarda xato bo'lishi mumkin)
+
+Natijani saqlaydi
+
+202
+
+Async rejim: batch qabul qilindi
+
+GET /v1/rag/batch/{batch_id} ni
+
+poll qiladi
+400
+
+Validatsiya: 10 dan ko'p savol,
+takroriy id , bo'sh question
+
+So'rovni tuzatadi
+
+401 / 403
+
+API kalit noto'g'ri
+
+Kalitni tekshiradi
+
+409
+
+Shu batch_id boshqa mazmun
+bilan yuborilgan
+
+Yangi batch_id
+
+429
+
+Rate limit
+
+Retry-After dan keyin qayta
+
+500 / 503 /
+
+Servis xatosi yoki timeout
+
+3 martagacha qayta (5 s, 15 s, 45 s)
+
+504
+
+Savol darajasidagi xato obyekti:
+
+Page 7 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+{
+"id": "q007",
+"status": "error",
+"answer": null,
+"citations": [],
+"contexts": [],
+"error": {
+"code": "LLM_TIMEOUT",
+"message": "Generation exceeded 60s",
+"retryable": true
+}
+}
+
+Tavsiya etilgan xato kodlari: RETRIEVAL_FAILED , INDEX_UNAVAILABLE , LLM_TIMEOUT ,
+LLM_ERROR , CONTEXT_TOO_LONG , INVALID_LANGUAGE .
+
+Sync va async. Asosiy rejim — sync: javob shu so'rovda qaytadi. Batch 120 soniyadan
+oshsa, server 202 va {"batch_id": "…", "status": "processing"} qaytaradi; GET
+keyinchalik processing → completed / failed holatini va 4-bo'limdagi to'liq javobni
+beradi. Natija kamida 30 kun saqlanadi.
+
+6. RAG ni baholash
+Natija ikki qatlamda baholanadi: qidiruv to'g'ri modda topdimi va javob shu moddaga sodiq
+va to'g'rimi. Quyidagi chegaralar — birinchi run uchun taklif, jamoa bilan kelishiladi.
+
+Test to'plami formati (tester tomonida)
+id,batch,category,question,expected_answer,expected_doc_id,expected_article,a
+nswerable
+q001,b01,faktik,"Yillik asosiy mehnat ta'tilining eng kam muddati qancha?","
+<kutilgan javob>",lex:XXXXXXX,XXX-modda,true
+q010,b01,javobsiz,"<qonunda javobi yo'q savol>",,,,false
+
+100 savol tarkibi
+Kategoriya
+
+Soni
+
+Nimani tekshiradi
+
+Faktik, bitta modda
+
+35
+
+Asosiy retrieval aniqligi
+
+Page 8 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+Kategoriya
+
+Soni
+
+Nimani tekshiradi
+
+Raqamlar: muddat, summa, foiz, BHM
+
+15
+
+Raqamlarni xatosiz ko'chirish
+
+Bir nechta modda / hujjat
+
+15
+
+Ko'p manbani birlashtirish
+
+O'zgargan yoki kuchini yo'qotgan normalar
+
+10
+
+Amaldagi tahrirni tanlash
+
+Rus tili va kirill yozuvidagi savollar
+
+10
+
+Ko'p tillilik
+
+Javobi yo'q / qonundan tashqari
+
+10
+
+no_answer , gallyutsinatsiya qilmaslik
+
+Noaniq yoki og'zaki ifodalangan
+
+5
+
+Query rewriting
+
+Har bir batch ga har kategoriyadan aralashtirib qo'yiladi, shunda bitta batch ning o'zi ham
+kichik namuna bo'ladi.
+
+Metrikalar
+Qatlam
+
+Metrika
+
+Qanday hisoblanadi
+
+Maqsad
+(taklif)
+
+Retrieval
+
+Hit@5 (hujjat)
+
+expected_doc_id top-5 contexts
+
+≥ 90%
+
+ichida bormi
+Retrieval
+
+Hit@5 (modda)
+
+expected_article top-5 ichida bormi
+
+≥ 80%
+
+Retrieval
+
+MRR
+
+To'g'ri moddaning birinchi o'rni bo'yicha
+
+≥ 0.70
+
+Retrieval
+
+Context
+precision
+
+Top-5 dan nechtasi savolga tegishli
+
+≥ 60%
+
+Generatsiya
+
+Answer
+correctness
+
+Kutilgan javob bilan solishtirish: 0 / 1 / 2
+ball (qo'lda yoki LLM-hakam)
+
+o'rtacha ≥ 1.6
+
+Generatsiya
+
+Faithfulness
+
+Javobdagi har bir da'vo contexts da
+bormi
+
+≥ 95%
+
+Manba
+
+Citation
+accuracy
+
+Keltirilgan modda haqiqatan da'voni
+tasdiqlaydimi
+
+≥ 90%
+
+Manba
+
+To'qilgan manba
+
+contexts da yo'q yoki lex.uz da yo'q
+
+0 ta
+
+havola
+Manba
+
+Eskirgan norma
+
+Kuchini yo'qotgan hujjatga tayanish
+
+0 ta
+
+Page 9 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+Qatlam
+
+Metrika
+
+Qanday hisoblanadi
+
+Maqsad
+(taklif)
+
+Xavfsizlik
+
+No-answer
+aniqligi
+
+10 ta javobsiz savoldan nechtasida
+
+≥ 9 / 10
+
+Operatsion
+
+Latency
+
+Savol bo'yicha total_ms : p50 / p95
+
+≤ 5 s / ≤ 12 s
+
+Operatsion
+
+Xato ulushi
+
+status = error yoki timeout
+
+≤ 2%
+
+no_answer: true
+
+MRR formulasi (N = javobi bor savollar soni, rank_i = to'g'ri moddaning o'rni):
+\mathrm{MRR} = \frac{1}{N} \sum_{i=1}^{N} \frac{1}{\mathrm{rank}_i}
+
+Xatolarni tahlil qilishda har bir noto'g'ri javob bitta sababga yoziladi: retrieval (to'g'ri
+modda topilmagan), generatsiya (modda topilgan, lekin javob noto'g'ri) yoki manba (javob
+to'g'ri, havola noto'g'ri). Bu jamoaga nimani tuzatishni ko'rsatadi.
+
+7. Ishlab chiquvchilar uchun checklist
+API testga tayyor deb hisoblanishi uchun quyidagilarning barchasi bajarilgan bo'lishi
+kerak.
+POST /v1/rag/batch 1–10 savolni qabul qiladi, 11 ta bo'lsa 400
+
+Javobda har bir id bitta marta, savollar soniga teng
+Har bir javobda citations : lex.uz doc_id , url , article , edition_date ,
+doc_status , quote
+Har bir javobda contexts (top-k, matni va ballari bilan)
+Har bir citations[].chunk_id contexts ichida bor
+Javobsiz savolga no_answer: true , to'qilgan javob yo'q
+Bitta savoldagi xato boshqalarga ta'sir qilmaydi ( status: error + error obyekti)
+system obyekti: model, embedding, indeks versiyasi, lex.uz snapshot sanasi
+temperature = 0 va seed bilan bir xil savol bir xil manbalarni qaytaradi
+
+Bir xil batch_id qayta yuborilsa saqlangan natija qaytadi
+Lotin, kirill va rus tilidagi savollar to'g'ri ishlaydi, o' / g' buzilmaydi
+Batch ≤ 120 s yoki async 202 + GET ishlaydi
+GET /v1/meta va GET /v1/health ishlaydi
+
+Test uchun alohida API kalit va base URL berilgan
+
+Page 10 of 11
+
+RAG API — test spetsifikatsiyasi (lex.uz)
+
+Ochiq savollar jamoa uchun:
+lex.uz dan ma'lumot qaysi sanada olingan va qanchalik tez-tez yangilanadi?
+Chunking modda bo'yichami yoki belgilangan uzunlik bo'yichami? Bu article
+maydonining aniqligiga ta'sir qiladi.
+Kuchini yo'qotgan hujjatlar indeksda saqlanadimi va qanday belgilanadi?
+
+Page 11 of 11
+
+

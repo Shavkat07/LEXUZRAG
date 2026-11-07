@@ -8,6 +8,7 @@ lexuz.retrieval.reranker
 """
 
 import logging
+import re
 from typing import Any, List, Optional, Tuple
 
 from lexuz.retrieval.models import RerankedResult, SearchResult
@@ -15,6 +16,86 @@ from lexuz.retrieval.models import RerankedResult, SearchResult
 logger = logging.getLogger("lexuz.retrieval.reranker")
 
 DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+
+
+def compute_legal_composite_score(
+    query: str,
+    raw_rerank_score: float,
+    result: SearchResult,
+) -> float:
+    """
+    Вычисляет композитный правовой скор кандидата:
+    - Семантический скор кросс-энкодера (BGE Reranker)
+    - Гибридный скор первичного поиска Qdrant (Dense + Sparse RRF)
+    - Иерархия нормативно-правовых актов (Кодекс > Закон > Указ > Постановление > Подзаконный акт)
+    - Тип структурной единицы (Статья кодекса/закона имеет приоритет над пунктом подзаконного акта)
+    - Совпадение ключевых терминов вопроса в заголовке статьи / breadcrumb
+    - Пенализация раздутых чанков, где норма тонет в таблицах приложений
+    """
+    q_lower = query.lower()
+    q_words = set(re.findall(r"\b\w{3,}\b", q_lower))
+
+    title_lower = result.doc_title.lower()
+    unit_title_lower = (result.unit_title or "").lower()
+    breadcrumb_str = " ".join(result.breadcrumb).lower() if result.breadcrumb else ""
+    content_lower = result.content.lower()
+
+    # 1. Иерархия нормативно-правовых актов
+    h_boost = 0.0
+    if "kodeks" in title_lower or "кодекс" in title_lower:
+        # Проверяем, что это сам кодекс, а не постановление/закон о введении кодекса
+        if not any(term in title_lower for term in ["amalga oshirish", "tasdiqlash to'g'risida", "o'zgartirish"]):
+            h_boost = 0.09
+        else:
+            h_boost = 0.03
+    elif any(term in title_lower for term in ["qonun", "закон", "зру", "ўрқ"]):
+        h_boost = 0.06
+    elif any(term in title_lower for term in ["farmon", "указ", "пф"]):
+        h_boost = 0.03
+    elif any(term in title_lower for term in ["qaror", "постановление", "пкм", "пп"]):
+        h_boost = 0.01
+
+    # 2. Тип структурной единицы: статья закона/кодекса содержит общую правовую норму
+    u_boost = 0.0
+    if result.unit_type == "article" or (result.unit_number and "modda" in str(result.unit_number)):
+        u_boost = 0.04
+    elif result.unit_type == "clause":
+        u_boost = 0.01
+
+    # 3. Совпадение темы вопроса с заголовком статьи / рубрики (Breadcrumb)
+    target_text = f"{unit_title_lower} {breadcrumb_str}"
+    target_words = set(re.findall(r"\b\w{3,}\b", target_text))
+    title_overlap = len(q_words & target_words)
+    t_boost = min(0.08, title_overlap * 0.02)
+
+    # 4. Пенализация раздутых чанков и чисто процедурных/санкционных статей
+    penalty = 0.0
+    if ("buzilishida aybdor" in content_lower or "javob beradilar" in content_lower) and not any(
+        w in q_lower for w in ["javobgar", "jarima", "jazo", "ответствен"]
+    ):
+        if len(result.content) > 2000:
+            penalty += 0.08
+
+    # 5. Соответствие интенту вопроса (срок, продолжительность)
+    intent_boost = 0.0
+    if any(w in q_lower for w in ["muddat", "davomiylig", "qancha", "necha kun", "срок", "длительност"]):
+        if any(w in content_lower for w in ["kalendar kun", "ish kuni", "davomiyligi", "tashkil etadi", "дней", "года", "лет"]):
+            intent_boost += 0.03
+
+    # Первичный retrieval score (от 0.0 до 1.0)
+    ret_score = float(result.score) if result.score is not None else 0.0
+
+    # Взвешенная сумма: кросс-энкодер 60%, первичный поиск 25%, правовые приоритеты 15%
+    composite = (
+        (raw_rerank_score * 0.60)
+        + (ret_score * 0.25)
+        + h_boost
+        + u_boost
+        + t_boost
+        + intent_boost
+        - penalty
+    )
+    return round(float(min(0.9999, max(0.01, composite))), 4)
 
 
 class BGEReranker:
@@ -126,7 +207,12 @@ class BGEReranker:
 
         scores = [float(s) for s in scores]
 
-        scored_results: List[Tuple[float, SearchResult]] = list(zip(scores, results))
+        # Применяем композитный правовой скоринг с учетом иерархии актов
+        scored_results: List[Tuple[float, SearchResult]] = []
+        for s, res in zip(scores, results):
+            comp_score = compute_legal_composite_score(query, s, res)
+            scored_results.append((comp_score, res))
+
         scored_results.sort(key=lambda x: x[0], reverse=True)
 
         reranked: List[RerankedResult] = []
@@ -161,8 +247,9 @@ class MockReranker:
         for r in results:
             doc_terms = set(r.content.lower().split())
             overlap = len(query_terms.intersection(doc_terms))
-            score = 0.5 + 0.1 * overlap
-            scored.append((score, r))
+            base_score = 0.5 + 0.1 * overlap
+            comp_score = compute_legal_composite_score(query, base_score, r)
+            scored.append((comp_score, r))
 
         scored.sort(key=lambda x: x[0], reverse=True)
 
@@ -171,7 +258,7 @@ class MockReranker:
             reranked.append(
                 RerankedResult(
                     search_result=res,
-                    rerank_score=round(score, 4),
+                    rerank_score=round(float(score), 4),
                     rank=rank,
                 )
             )
