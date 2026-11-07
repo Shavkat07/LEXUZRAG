@@ -28,3 +28,7 @@ lexuz = "lexuz.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lexuz*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

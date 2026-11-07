@@ -100,6 +100,7 @@ def main():
     ask_p.add_argument("--top-k", type=int, default=5, help="Количество подтверждающих норм (по умолчанию 5)")
     ask_p.add_argument("--as-of-date", type=str, default=None, help="Дата среза законодательства (ГГГГ-ММ-ДД)")
     ask_p.add_argument("--lang", choices=["auto", "uz-Latn", "uz-Cyrl", "ru"], default="auto", help="Целевой язык ответа")
+    ask_p.add_argument("--style", choices=["simple", "formal"], default="simple", help="Стиль ответа: 'simple' (простой) или 'formal' (строгий юридический)")
     ask_p.add_argument("--mock", action="store_true", help="Использовать MockSearchService для тестирования")
     ask_p.add_argument("--raw", action="store_true", help="Вывести сырой JSON ответа вместо форматированного Markdown")
 
@@ -248,6 +249,7 @@ def main():
             return_debug=True,
             as_of_date=args.as_of_date,
             answer_language=args.lang,
+            style=args.style,
         )
 
         res = engine.process_item(
@@ -264,7 +266,10 @@ def main():
             print("⚖️  LEX.UZ LEGAL RAG AI JAVOBI (ЮРИДИЧЕСКАЯ КОНСУЛЬТАЦИЯ)")
             print("=" * 70)
             print(f"Savol: {args.question}")
-            print(f"Holati: {res.status.upper()} | Ishonchlilik: {int(res.confidence * 100)}% | Til: {res.answer_language}\n")
+            if res.debug and res.debug.rewritten_query and res.debug.rewritten_query != args.question:
+                print(f"Yuridik so'rov (Rewritten): {res.debug.rewritten_query}")
+            conf_val = int((res.confidence or 0) * 100)
+            print(f"Holati: {res.status.upper()} | Uslub: {args.style.upper()} | Ishonchlilik: {conf_val}% | Til: {res.answer_language}\n")
             print(f"Javob:\n{res.answer}\n")
             if res.citations:
                 print("-" * 70)

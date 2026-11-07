@@ -125,6 +125,26 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <!-- TAB 1: Single Query Sandbox -->
     <section id="tabSingle" class="space-y-6">
       <div class="glass-card rounded-2xl p-6 border border-slate-800 shadow-xl space-y-4">
+        <!-- Mode selector: Simple vs Formal -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Javob rejimi:</span>
+            <div class="inline-flex p-1 bg-slate-900 rounded-xl border border-slate-700/80">
+              <button type="button" id="btnStyleSimple" onclick="setModeStyle('simple')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm">
+                <span>🟢</span> Oddiy tilda (Tushunarli)
+              </button>
+              <button type="button" id="btnStyleFormal" onclick="setModeStyle('formal')" class="px-3.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition flex items-center gap-1.5">
+                <span>⚖️</span> Rasmiy tilda (Yuridik)
+              </button>
+            </div>
+            <input type="hidden" id="selectedStyle" value="simple" />
+          </div>
+          <div class="text-[11px] text-slate-400 flex items-center gap-1">
+            <i class="fa-solid fa-circle-info text-sky-400"></i>
+            <span id="styleHint">Oddiy fuqarolar uchun sodda, tushunarli va qulay leksikonda tushuntirish</span>
+          </div>
+        </div>
+
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <label class="text-sm font-bold text-slate-200 flex items-center gap-2">
             <i class="fa-regular fa-comment-dots text-sky-400"></i> Savolingizni kiriting:
@@ -132,6 +152,12 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <div class="flex flex-wrap gap-2">
             <button onclick="fillSample(1)" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 transition">
               🇺🇿 Ta'til muddati (Lotin)
+            </button>
+            <button onclick="fillSample(4)" class="text-[11px] bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 px-2.5 py-1 rounded-md border border-emerald-700/60 transition">
+              🗣️ Otpuska necha kun ozi (Oddiy)
+            </button>
+            <button onclick="fillSample(5)" class="text-[11px] bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-300 px-2.5 py-1 rounded-md border border-emerald-700/60 transition">
+              🗣️ Ishdan haydashsa nima qilaman
             </button>
             <button onclick="fillSample(2)" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-md border border-slate-700 transition">
               🇷🇺 Срок давности (Русский)
@@ -183,6 +209,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               <span id="resStatusBadge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 OK
               </span>
+              <span id="resStyleBadge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                🟢 Oddiy tilda
+              </span>
               <span id="resTimingBadge" class="text-xs text-slate-400">
                 <i class="fa-regular fa-clock mr-1"></i> <span id="resTotalMs">0</span> ms
               </span>
@@ -193,6 +222,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <button onclick="copyResultJson()" class="text-xs text-slate-400 hover:text-white px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1">
               <i class="fa-regular fa-copy"></i> JSON nusxalash
             </button>
+          </div>
+
+          <!-- Rewritten Query Box (if formalized) -->
+          <div id="resRewrittenQueryBox" class="hidden p-3.5 rounded-xl bg-sky-950/40 border border-sky-800/60 text-xs space-y-1">
+            <span class="font-bold text-sky-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Qonunchilik bo'yicha rasmiylashtirilgan yuridik so'rov (Legal Search Query):
+            </span>
+            <p id="resRewrittenQueryText" class="text-slate-200 font-mono pl-4 border-l-2 border-sky-500/50"></p>
           </div>
 
           <!-- Answer Text Area -->
@@ -236,7 +273,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           </button>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
             <label class="text-xs text-slate-400">run_id:</label>
             <input id="batchRunId" type="text" value="eval-2026-11-03" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white mt-1" />
@@ -252,6 +289,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               <span class="text-slate-500">/</span>
               <input id="batchTotal" type="number" value="10" min="1" max="100" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white" />
             </div>
+          </div>
+          <div>
+            <label class="text-xs text-slate-400">Javob uslubi (style):</label>
+            <select id="batchStyle" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white mt-1">
+              <option value="simple" selected>🟢 Oddiy tilda (Simple)</option>
+              <option value="formal">⚖️ Rasmiy tilda (Formal)</option>
+            </select>
           </div>
         </div>
 
@@ -338,6 +382,26 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   <script>
     let activeResultData = null;
+    let currentStyle = "simple";
+
+    function setModeStyle(style) {
+      currentStyle = style;
+      const hiddenInput = document.getElementById("selectedStyle");
+      if (hiddenInput) hiddenInput.value = style;
+      const btnSimple = document.getElementById("btnStyleSimple");
+      const btnFormal = document.getElementById("btnStyleFormal");
+      const hint = document.getElementById("styleHint");
+
+      if (style === "simple") {
+        if (btnSimple) btnSimple.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm";
+        if (btnFormal) btnFormal.className = "px-3.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition flex items-center gap-1.5";
+        if (hint) hint.innerText = "Oddiy fuqarolar uchun sodda, tushunarli va qulay leksikonda tushuntirish";
+      } else {
+        if (btnFormal) btnFormal.className = "px-3.5 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 shadow-sm";
+        if (btnSimple) btnSimple.className = "px-3.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition flex items-center gap-1.5";
+        if (hint) hint.innerText = "Yuristlar va rasmiy xulosalar uchun qat'iy yuridik terminologiya bilan tahlil";
+      }
+    }
 
     function getApiKey() {
       return localStorage.getItem("lexuz_api_key") || document.getElementById("apiKeyInput").value || "lexuz-test-api-key";
@@ -412,10 +476,20 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       const q = document.getElementById("singleQuestion");
       if (id === 1) {
         q.value = "Yillik asosiy mehnat ta'tilining eng kam muddati qancha?";
+        setModeStyle("formal");
         document.getElementById("singleLang").value = "uz-Latn";
       } else if (id === 2) {
         q.value = "Какой срок исковой давности установлен Гражданским кодексом?";
+        setModeStyle("formal");
         document.getElementById("singleLang").value = "ru";
+      } else if (id === 4) {
+        q.value = "otpuska qancha kun beriladi ozi";
+        setModeStyle("simple");
+        document.getElementById("singleLang").value = "uz-Latn";
+      } else if (id === 5) {
+        q.value = "ishdan haydab yuborsa nima qilaman";
+        setModeStyle("simple");
+        document.getElementById("singleLang").value = "uz-Latn";
       } else {
         q.value = "Kosmik kemalarni shaxsiy xususiylashtirish tartibi haqida qonunda nima deyilgan?";
         document.getElementById("singleLang").value = "auto";
@@ -447,6 +521,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               top_k: topK,
               answer_language: lang,
               temperature: temp,
+              style: currentStyle,
               return_contexts: true,
               return_debug: true
             }
@@ -482,6 +557,30 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         statusBadge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30";
       } else {
         statusBadge.className = "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30";
+      }
+
+      // Style badge
+      const styleBadge = document.getElementById("resStyleBadge");
+      if (styleBadge) {
+        if (currentStyle === "formal") {
+          styleBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20";
+          styleBadge.innerText = "⚖️ Rasmiy tilda";
+        } else {
+          styleBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+          styleBadge.innerText = "🟢 Oddiy tilda";
+        }
+      }
+
+      // Rewritten query banner (if formalized and differs from question)
+      const rwBox = document.getElementById("resRewrittenQueryBox");
+      const rawQ = document.getElementById("singleQuestion").value.trim();
+      if (rwBox) {
+        if (item.debug && item.debug.rewritten_query && item.debug.rewritten_query.toLowerCase() !== rawQ.toLowerCase()) {
+          rwBox.classList.remove("hidden");
+          document.getElementById("resRewrittenQueryText").innerText = item.debug.rewritten_query;
+        } else {
+          rwBox.classList.add("hidden");
+        }
       }
 
       document.getElementById("resTotalMs").innerText = item.timing ? item.timing.total_ms : 0;
@@ -576,6 +675,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       const batchId = document.getElementById("batchBatchId").value.trim();
       const bIndex = parseInt(document.getElementById("batchIndex").value, 10);
       const bTotal = parseInt(document.getElementById("batchTotal").value, 10);
+      const batchStyleEl = document.getElementById("batchStyle");
+      const batchStyle = batchStyleEl ? batchStyleEl.value : "simple";
       const rawItems = document.getElementById("batchJsonArea").value.trim();
 
       let items = [];
@@ -600,7 +701,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             top_k: 5,
             return_contexts: true,
             return_debug: true,
-            temperature: 0.0
+            temperature: 0.0,
+            style: batchStyle
           },
           items: items
         };

@@ -24,6 +24,10 @@ class OptionsRequest(BaseModel):
         default="auto",
         description="auto = язык вопроса; uz-Latn, uz-Cyrl, ru",
     )
+    style: Optional[str] = Field(
+        default="simple",
+        description="Стиль ответа: 'simple' (простой, понятный гражданам) или 'formal' (строгий юридический)",
+    )
 
     @field_validator("answer_language")
     @classmethod
@@ -31,6 +35,18 @@ class OptionsRequest(BaseModel):
         if v is not None and v not in ("auto", "uz-Latn", "uz-Cyrl", "ru"):
             raise ValueError("answer_language must be one of: 'auto', 'uz-Latn', 'uz-Cyrl', 'ru'")
         return v
+
+    @field_validator("style")
+    @classmethod
+    def validate_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return "simple"
+        val = v.strip().lower()
+        if val in ("simple", "oddiy", "простой", "plain"):
+            return "simple"
+        if val in ("formal", "rasmiy", "официальный"):
+            return "formal"
+        raise ValueError("style must be one of: 'simple', 'formal' (or aliases 'oddiy', 'rasmiy')")
 
 
 class ItemRequest(BaseModel):
