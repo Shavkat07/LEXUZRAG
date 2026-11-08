@@ -1149,7 +1149,8 @@ class RAGEngine:
                     )
             else:
                 answer_text = (
-                    f"{quote} "
+                    f"**Правовая норма:**\n\n"
+                    f"{quote}\n\n"
                     f"Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
                 )
         elif target_lang == "uz-Cyrl":
@@ -1159,35 +1160,55 @@ class RAGEngine:
             if is_simple:
                 if is_dismissal_query:
                     answer_text = (
-                        f"Оддий тилда тушунтирганда: иш берувчи ходимни сабабсиз ва огоҳлантиришсиз ишдан бўшатишга ҳақли эмас. "
-                        f"Иш берувчи ташаббуси билан бўшатилганда ходим камида 2 ой олдин ёзма огоҳлантирилиши ёки унга товон пули тўланиши шарт. "
-                        f"{quote_cyr} Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                        f"Оддий тилда тушунтирганда: иш берувчи ходимни сабабсиз ва огоҳлантиришсиз ишдан бўшатишга ҳақли эмас.\n\n"
+                        f"Иш берувчи ташаббуси билан бўшатилганда ходим камида 2 ой олдин ёзма огоҳлантирилиши ёки унга товон пули тўланиши шарт.\n\n"
+                        f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                     )
                 elif is_wage_query:
                     answer_text = (
-                        f"Оддий тилда тушунтирганда: иш ҳақи ходимларга ҳар ярим ойда камида бир марта тўланиши шарт. "
-                        f"Маош кечиктирилган тақдирда иш берувчи жавобгарликка тортилади ва фоиз тўлайди. "
-                        f"{quote_cyr} Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                        f"Оддий тилда тушунтирганда: иш ҳақи ходимларга ҳар ярим ойда камида бир марта тўланиши шарт.\n\n"
+                        f"Маош кечиктирилган тақдирда иш берувчи жавобгарликка тортилади ва фоиз тўлайди.\n\n"
+                        f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                     )
                 elif is_leave_query:
                     answer_text = (
-                        f"Оддий тилда тушунтирганда: қонунчиликка кўра ходимларга йилига камида 21 календарь кунлик "
-                        f"асосий меҳнат таътили берилиши шарт. Иш берувчи бундан кам муддат белгилаши тақиқланади. "
-                        f"{quote_cyr} Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                        f"Оддий тилда тушунтирганда: қонунчиликка кўра ходимларга йилига камида 21 календарь кунлик асосий меҳнат таътили берилиши шарт.\n\n"
+                        f"Иш берувчи бундан кам муддат белгилаши тақиқланади.\n\n"
+                        f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                     )
                 elif is_limitation_query:
                     answer_text = (
-                        f"Оддий тилда айтганда: бузилган ҳуқуқларни судда ҳимоя қилиш учун умумий даъво муддати "
-                        f"3 йил этиб белгиланган. {quote_cyr} Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                        f"Оддий тилда айтганда: бузилган ҳуқуқларни судда ҳимоя қилиш учун умумий даъво муддати 3 йил этиб белгиланган.\n\n"
+                        f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                     )
                 else:
-                    answer_text = (
-                        f"Оддий тилда тушунтирганда: {quote_cyr} "
-                        f"Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
-                    )
+                    clean_q_cyr = quote_cyr.strip()
+                    if len(clean_q_cyr) > 250:
+                        clauses = [c.strip() for c in re.split(r"\),|\);", clean_q_cyr) if c.strip()]
+                        if len(clauses) >= 2:
+                            bullets = "\n".join(f"* {c})" if not c.endswith(")") else f"* {c}" for c in clauses[:5])
+                            answer_text = (
+                                f"Ушбу ҳолат юзасидан қонунчиликда қуйидаги асосий нормалар назарда тутилган:\n\n"
+                                f"{bullets}\n\n"
+                                f"Мазкур қоидалар «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                            )
+                        else:
+                            short_q = clean_q_cyr[:240].rsplit(".", 1)[0] + "." if "." in clean_q_cyr[:240] else clean_q_cyr[:240] + "..."
+                            answer_text = (
+                                f"Қонунчилик таҳлили бўйича мазкур масала юзасидан асосий норма:\n\n"
+                                f"**Асосий қоида:** {short_q}\n\n"
+                                f"Ушбу тартиб «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                            )
+                    else:
+                        answer_text = (
+                            f"Қонунчилик таҳлили бўйича мазкур масала юзасидан асосий норма:\n\n"
+                            f"**Асосий қоида:** {clean_q_cyr}\n\n"
+                            f"Ушбу тартиб «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                        )
             else:
                 answer_text = (
-                    f"{quote_cyr} "
+                    f"**Қонунчилик нормаси:**\n\n"
+                    f"{quote_cyr}\n\n"
                     f"Ушбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                 )
         else:
@@ -1216,13 +1237,34 @@ class RAGEngine:
                         f"3 yil etib belgilangan. {quote} Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
                     )
                 else:
-                    answer_text = (
-                        f"Oddiy tilda tushuntirganda: {quote} "
-                        f"Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
-                    )
+                    clean_quote = quote.strip()
+                    if len(clean_quote) > 250:
+                        # Если цитата содержит перечисление статей/пунктов через запятую, разбиваем на список
+                        clauses = [c.strip() for c in re.split(r"\),|\);", clean_quote) if c.strip()]
+                        if len(clauses) >= 2:
+                            bullets = "\n".join(f"* {c})" if not c.endswith(")") else f"* {c}" for c in clauses[:5])
+                            answer_text = (
+                                f"Ushbu holat yuzasidan qonunchilikda quyidagi asosiy normalar nazarda tutilgan:\n\n"
+                                f"{bullets}\n\n"
+                                f"Mazkur qoidalar «{clean_title}»ning {art_label}sida belgilangan [1]."
+                            )
+                        else:
+                            short_q = clean_quote[:240].rsplit(".", 1)[0] + "." if "." in clean_quote[:240] else clean_quote[:240] + "..."
+                            answer_text = (
+                                f"Qonunchilik tahlili bo'yicha mazkur masala yuzasidan asosiy norma:\n\n"
+                                f"**Asosiy qoida:** {short_q}\n\n"
+                                f"Ushbu tartib «{clean_title}»ning {art_label}sida belgilangan [1]."
+                            )
+                    else:
+                        answer_text = (
+                            f"Qonunchilik tahlili bo'yicha mazkur masala yuzasidan asosiy norma:\n\n"
+                            f"**Asosiy qoida:** {clean_quote}\n\n"
+                            f"Ushbu tartib «{clean_title}»ning {art_label}sida belgilangan [1]."
+                        )
             else:
                 answer_text = (
-                    f"{quote} "
+                    f"**Qonunchilik normasi:**\n\n"
+                    f"{quote}\n\n"
                     f"Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
                 )
 

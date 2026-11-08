@@ -10,13 +10,14 @@ lexuz.api.dashboard
 
 from fastapi.responses import HTMLResponse
 
-DASHBOARD_HTML = """<!DOCTYPE html>
+DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="uz" class="h-full bg-slate-900 text-slate-100">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Lex.uz Legal RAG Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -39,6 +40,59 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       border: 1px solid rgba(56, 189, 248, 0.4);
       margin: 0 0.15rem;
       cursor: pointer;
+    }
+    .markdown-content {
+      color: #e2e8f0;
+      line-height: 1.8 !important;
+      font-size: 0.95rem;
+    }
+    .markdown-content p {
+      margin-bottom: 1.15rem !important;
+      line-height: 1.8 !important;
+    }
+    .markdown-content p:last-child {
+      margin-bottom: 0 !important;
+    }
+    .markdown-content strong, .markdown-content b {
+      color: #38bdf8 !important;
+      font-weight: 700 !important;
+    }
+    .markdown-content em, .markdown-content i {
+      color: #cbd5e1;
+      font-style: italic;
+    }
+    .markdown-content ul {
+      list-style-type: disc !important;
+      margin-left: 1.75rem !important;
+      margin-top: 0.6rem !important;
+      margin-bottom: 1.15rem !important;
+    }
+    .markdown-content ol {
+      list-style-type: decimal !important;
+      margin-left: 1.75rem !important;
+      margin-top: 0.6rem !important;
+      margin-bottom: 1.15rem !important;
+    }
+    .markdown-content li {
+      margin-bottom: 0.45rem !important;
+      line-height: 1.7 !important;
+    }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4 {
+      color: #38bdf8 !important;
+      font-weight: 700 !important;
+      margin-top: 1.25rem !important;
+      margin-bottom: 0.6rem !important;
+    }
+    .markdown-content blockquote {
+      border-left: 3px solid #38bdf8 !important;
+      padding-left: 0.85rem !important;
+      margin: 1rem 0 !important;
+      color: #94a3b8 !important;
+      font-style: italic;
+      background: rgba(56, 189, 248, 0.05);
+      border-radius: 0 0.5rem 0.5rem 0;
+      padding-top: 0.35rem !important;
+      padding-bottom: 0.35rem !important;
     }
   </style>
 </head>
@@ -235,7 +289,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <!-- Answer Text Area -->
           <div class="space-y-2">
             <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">AI Yuridik Xulosasi:</h3>
-            <div id="resAnswerText" class="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap font-normal"></div>
+            <div id="resAnswerText" class="p-5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 text-sm leading-relaxed font-normal markdown-content"></div>
           </div>
 
           <!-- Citations Section -->
@@ -586,9 +640,32 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       document.getElementById("resTotalMs").innerText = item.timing ? item.timing.total_ms : 0;
       document.getElementById("resTokens").innerText = item.usage ? (item.usage.input_tokens + item.usage.output_tokens) : 0;
 
-      // Answer text with highlighted citations
-      let formattedAnswer = item.answer || "Javob yo'q";
-      formattedAnswer = formattedAnswer.replace(/\\[(\\d+)\\]/g, '<span class="citation-pill">[$1]</span>');
+      // Answer text with Markdown rendering and highlighted citations
+      let rawAnswer = item.answer || "Javob yo'q";
+      let formattedAnswer = "";
+      if (window.marked && typeof window.marked.parse === "function") {
+        try {
+          formattedAnswer = window.marked.parse(rawAnswer, { breaks: true, gfm: true });
+        } catch (e) {
+          console.warn("marked error:", e);
+        }
+      }
+      if (!formattedAnswer) {
+        // Robust fallback markdown parser
+        let html = rawAnswer.trim();
+        html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="text-sky-300 font-bold">$1</strong>');
+        html = html.replace(/__(.*?)__/g, '<strong class="text-sky-300 font-bold">$1</strong>');
+        html = html.replace(/\*(.*?)\*/g, '<em class="italic text-slate-300">$1</em>');
+        html = html.replace(/^[\*\-]\s+(.*$)/gim, '<li class="ml-5 list-disc my-1">$1</li>');
+        html = html.replace(/^\d+\.\s+(.*$)/gim, '<li class="ml-5 list-decimal my-1">$1</li>');
+        let paragraphs = html.split(/\n\s*\n/);
+        formattedAnswer = paragraphs.map(p => {
+          p = p.trim();
+          if (p.startsWith("<li")) return `<ul class="my-2">${p}</ul>`;
+          return `<p class="mb-4 leading-relaxed">${p.replace(/\n/g, '<br/>')}</p>`;
+        }).join('');
+      }
+      formattedAnswer = formattedAnswer.replace(/\[(\d+)\]/g, '<span class="citation-pill">[$1]</span>');
       document.getElementById("resAnswerText").innerHTML = formattedAnswer;
 
       // Citations
