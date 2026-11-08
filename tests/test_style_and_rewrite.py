@@ -458,3 +458,24 @@ def test_gemini_thinking_budget_and_model_fallback(monkeypatch):
     # Проверяем, что thinking_budget=0 был установлен
     assert captured_configs[0].thinking_config.thinking_budget == 0
 
+
+def test_assault_query_rewriting_and_formatting():
+    """Тестирование переписывания и форматирования запросов о драке / самообороне / телесных повреждениях."""
+    engine = RAGEngine(search_service=MockSearchService())
+
+    # 1. Проверка детекции неформального языка
+    q_uz = "ko'chada bitta odam bilan mushtlashdim , o'zi birinchi boshladi, va uning jag'iga musht urdim"
+    assert RAGEngine.is_colloquial_or_informal(q_uz, lang="uz-Latn") is True
+
+    # 2. Проверка эвристического переписывания запроса
+    rw_uz = engine.rewrite_query(q_uz, lang="uz-Latn")
+    assert "badanga shikast yetkazish" in rw_uz
+    assert "zaruriy mudofaa" in rw_uz
+
+    # 3. Проверка русского запроса о драке
+    q_ru = "подрались на улице он первый начал я ударил его в челюсть"
+    assert RAGEngine.is_colloquial_or_informal(q_ru, lang="ru") is True
+    rw_ru = engine.rewrite_query(q_ru, lang="ru")
+    assert "вреда здоровью" in rw_ru
+    assert "необходимой обороны" in rw_ru
+

@@ -87,11 +87,16 @@ def get_health() -> HealthResponse:
 
     uptime = time.monotonic() - _start_time
     health_status = "ok" if qdrant_info.get("status") in ("connected", "ok", "unknown") else "degraded"
+    active_prov, active_mdl, _, _ = engine.get_active_provider()
+    is_cfg = engine.is_llm_configured()
     return HealthResponse(
         status=health_status,
         version="0.4.2",
         qdrant=qdrant_info,
         gemini_configured=bool(engine.gemini_api_key),
+        llm_configured=is_cfg,
+        llm_provider=active_prov,
+        llm_model=active_mdl,
         uptime_seconds=round(uptime, 2),
         timestamp=datetime.now(UZ_TZ).isoformat(),
     )

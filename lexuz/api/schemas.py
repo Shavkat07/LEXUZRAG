@@ -28,6 +28,38 @@ class OptionsRequest(BaseModel):
         default="simple",
         description="Стиль ответа: 'simple' (простой, понятный гражданам) или 'formal' (строгий юридический)",
     )
+    provider: Optional[str] = Field(
+        default=None,
+        description="LLM провайдер: deepseek, openai, claude/anthropic, gemini, custom",
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="Модель LLM (например deepseek-chat, gpt-4o, claude-3-5-sonnet-20241022, gemini-3.5-flash)",
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API ключ для выбранного LLM провайдера",
+    )
+    base_url: Optional[str] = Field(
+        default=None,
+        description="Пользовательский base URL для custom/local LLM",
+    )
+    llm_provider: Optional[str] = Field(default=None, description="Алиас для provider")
+    llm_model: Optional[str] = Field(default=None, description="Алиас для model")
+    llm_api_key: Optional[str] = Field(default=None, description="Алиас для api_key")
+    llm_base_url: Optional[str] = Field(default=None, description="Алиас для base_url")
+
+    @model_validator(mode="after")
+    def sync_llm_aliases(self) -> "OptionsRequest":
+        if not self.provider and self.llm_provider:
+            self.provider = self.llm_provider
+        if not self.model and self.llm_model:
+            self.model = self.llm_model
+        if not self.api_key and self.llm_api_key:
+            self.api_key = self.llm_api_key
+        if not self.base_url and self.llm_base_url:
+            self.base_url = self.llm_base_url
+        return self
 
     @field_validator("answer_language")
     @classmethod
@@ -160,6 +192,8 @@ class ItemDebug(BaseModel):
 
     rewritten_query: Optional[str] = None
     retrieved_total: Optional[int] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
 
 
 class ItemError(BaseModel):
@@ -188,6 +222,8 @@ class ItemResult(BaseModel):
     timing: ItemTiming = Field(default_factory=ItemTiming, description="Тайминги обработки")
     usage: ItemUsage = Field(default_factory=ItemUsage, description="Расход токенов")
     error: Optional[ItemError] = Field(default=None, description="Объект ошибки при status != ok")
+    llm_provider: Optional[str] = Field(default=None, description="Использованный LLM провайдер")
+    llm_model: Optional[str] = Field(default=None, description="Использованная модель LLM")
 
 
 class SystemInfo(BaseModel):
@@ -195,6 +231,7 @@ class SystemInfo(BaseModel):
 
     pipeline_version: str = "0.4.2"
     llm_model: str = "gemini-2.5-flash"
+    llm_provider: Optional[str] = "gemini"
     embedding_model: str = "BAAI/bge-m3"
     reranker: Optional[str] = "BAAI/bge-reranker-v2-m3"
     index_version: str = "lex-idx-2026-10-28"
@@ -262,5 +299,8 @@ class HealthResponse(BaseModel):
     version: str = "0.4.2"
     qdrant: Dict[str, Any]
     gemini_configured: bool
+    llm_configured: bool = False
+    llm_provider: Optional[str] = "gemini"
+    llm_model: Optional[str] = None
     uptime_seconds: float
     timestamp: str

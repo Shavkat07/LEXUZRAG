@@ -21,6 +21,20 @@ from pathlib import Path
 # Enable expandable segments for PyTorch CUDA allocator to prevent VRAM fragmentation
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+# Auto-load .env file if available
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    try:
+        with open(_env_path, encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip())
+    except Exception:
+        pass
+
+from lexuz.api.llm import normalize_provider
 from lexuz.pipeline.auditor import run_audit
 from lexuz.pipeline.batch_parse import run_batch_parsing
 from lexuz.pipeline.profiler import run_profiler
@@ -95,12 +109,40 @@ def main():
     search_p.add_argument("--raw", action="store_true", help="Вывести сырой JSON вместо форматированного Markdown")
 
     # ask
-    ask_p = subparsers.add_parser("ask", help="Интерактивный вопрос к юридическому AI-агенту через LLM (Gemini)")
+    ask_p = subparsers.add_parser(
+        "ask",
+        help="Интерактивный вопрос к юридическому AI-агенту через LLM (DeepSeek, OpenAI, Claude, Gemini, Custom)",
+    )
     ask_p.add_argument("question", type=str, help="Юридический вопрос на узбекском или русском языке")
     ask_p.add_argument("--top-k", type=int, default=5, help="Количество подтверждающих норм (по умолчанию 5)")
     ask_p.add_argument("--as-of-date", type=str, default=None, help="Дата среза законодательства (ГГГГ-ММ-ДД)")
     ask_p.add_argument("--lang", choices=["auto", "uz-Latn", "uz-Cyrl", "ru"], default="auto", help="Целевой язык ответа")
     ask_p.add_argument("--style", choices=["simple", "formal"], default="simple", help="Стиль ответа: 'simple' (простой) или 'formal' (строгий юридический)")
+    ask_p.add_argument(
+        "--provider",
+        type=lambda s: normalize_provider(s) if s else None,
+        default=None,
+        choices=["deepseek", "openai", "claude", "anthropic", "gemini", "custom"],
+        help="LLM провайдер: deepseek, openai, claude, gemini, custom (по умолчанию автоопределение из .env)",
+    )
+    ask_p.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Название модели LLM (например deepseek-chat, gpt-4o, claude-3-5-sonnet-20241022, gemini-3.5-flash)",
+    )
+    ask_p.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="API ключ для выбранного провайдера LLM",
+    )
+    ask_p.add_argument(
+        "--base-url",
+        type=str,
+        default=None,
+        help="Пользовательский базовый URL API (для локальных LLM, OpenRouter, Groq, Ollama, vLLM)",
+    )
     ask_p.add_argument("--mock", action="store_true", help="Использовать MockSearchService для тестирования")
     ask_p.add_argument("--raw", action="store_true", help="Вывести сырой JSON ответа вместо форматированного Markdown")
 
@@ -242,7 +284,13 @@ def main():
         from lexuz.api.engine import RAGEngine, MockSearchService
         from lexuz.api.schemas import OptionsRequest
 
-        engine = RAGEngine(search_service=MockSearchService() if args.mock else None)
+        engine = RAGEngine(
+            search_service=MockSearchService() if args.mock else None,
+            llm_provider=args.provider,
+            llm_model=args.model,
+            llm_api_key=args.api_key,
+            llm_base_url=args.base_url,
+        )
         options = OptionsRequest(
             top_k=args.top_k,
             return_contexts=True,
@@ -250,6 +298,10 @@ def main():
             as_of_date=args.as_of_date,
             answer_language=args.lang,
             style=args.style,
+            provider=args.provider,
+            model=args.model,
+            api_key=args.api_key,
+            base_url=args.base_url,
         )
 
         res = engine.process_item(
@@ -269,7 +321,10 @@ def main():
             if res.debug and res.debug.rewritten_query and res.debug.rewritten_query != args.question:
                 print(f"Yuridik so'rov (Rewritten): {res.debug.rewritten_query}")
             conf_val = int((res.confidence or 0) * 100)
-            print(f"Holati: {res.status.upper()} | Uslub: {args.style.upper()} | Ishonchlilik: {conf_val}% | Til: {res.answer_language}\n")
+            active_prov = res.llm_provider or getattr(res.debug, "llm_provider", None) or engine.llm_provider
+            active_mdl = res.llm_model or getattr(res.debug, "llm_model", None) or engine.llm_model
+            llm_label = f"{active_prov} ({active_mdl})" if active_prov else "deterministic fallback"
+            print(f"Holati: {res.status.upper()} | Uslub: {args.style.upper()} | Ishonchlilik: {conf_val}% | Til: {res.answer_language} | LLM: {llm_label}\n")
             print(f"Javob:\n{res.answer}\n")
             if res.citations:
                 print("-" * 70)

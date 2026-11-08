@@ -199,6 +199,43 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
           </div>
         </div>
 
+        <!-- Multi-LLM Provider & Model Selector Row -->
+        <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                <i class="fa-solid fa-microchip text-sky-400 mr-1"></i> LLM Provayder:
+              </label>
+              <select id="llmProviderSelect" onchange="onProviderChange()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-sky-500">
+                <option value="deepseek" selected>🟣 DeepSeek (Tavsiya etiladi)</option>
+                <option value="openai">🟢 OpenAI (GPT-4o)</option>
+                <option value="anthropic">🟠 Claude (Anthropic)</option>
+                <option value="gemini">🔵 Google Gemini</option>
+                <option value="custom">⚙️ Custom / Local LLM</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                <i class="fa-solid fa-cube text-indigo-400 mr-1"></i> Model:
+              </label>
+              <input id="llmModelInput" type="text" value="deepseek-chat" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-sky-500" placeholder="deepseek-chat" />
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1 flex items-center justify-between">
+                <span><i class="fa-solid fa-key text-amber-400 mr-1"></i> Provayder API Key:</span>
+                <span class="text-[10px] text-slate-500 font-normal">(.env dan olinadi)</span>
+              </label>
+              <input id="llmApiKeyInput" type="password" oninput="onApiKeyInput()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500" placeholder="Ixtiyoriy (agar .env da bo'lmasa)..." />
+            </div>
+          </div>
+          <div id="llmBaseUrlRow" class="hidden pt-1 border-t border-slate-800/80">
+            <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+              <i class="fa-solid fa-link text-emerald-400 mr-1"></i> Custom Base URL (OpenRouter, Groq, Ollama, vLLM):
+            </label>
+            <input id="llmBaseUrlInput" type="text" oninput="onBaseUrlInput()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono outline-none focus:border-sky-500" placeholder="http://localhost:11434/v1" />
+          </div>
+        </div>
+
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <label class="text-sm font-bold text-slate-200 flex items-center gap-2">
             <i class="fa-regular fa-comment-dots text-sky-400"></i> Savolingizni kiriting:
@@ -265,6 +302,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               </span>
               <span id="resStyleBadge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 🟢 Oddiy tilda
+              </span>
+              <span id="resProviderBadge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                🟣 DeepSeek (deepseek-chat)
               </span>
               <span id="resTimingBadge" class="text-xs text-slate-400">
                 <i class="fa-regular fa-clock mr-1"></i> <span id="resTotalMs">0</span> ms
@@ -457,6 +497,74 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       }
     }
 
+    const DEFAULT_PROVIDER_MODELS = {
+      "deepseek": "deepseek-chat",
+      "openai": "gpt-4o",
+      "anthropic": "claude-3-5-sonnet-20241022",
+      "gemini": "gemini-3.5-flash",
+      "custom": "gpt-4o-mini"
+    };
+
+    function onProviderChange(updateModel = true) {
+      const p = document.getElementById("llmProviderSelect").value;
+      const modelInput = document.getElementById("llmModelInput");
+      const keyInput = document.getElementById("llmApiKeyInput");
+      const urlRow = document.getElementById("llmBaseUrlRow");
+      const urlInput = document.getElementById("llmBaseUrlInput");
+
+      if (updateModel && DEFAULT_PROVIDER_MODELS[p]) {
+        modelInput.value = DEFAULT_PROVIDER_MODELS[p];
+      }
+
+      if (urlRow) {
+        if (p === "custom") {
+          urlRow.classList.remove("hidden");
+        } else {
+          urlRow.classList.add("hidden");
+        }
+      }
+
+      const savedKey = localStorage.getItem("lexuz_key_" + p);
+      keyInput.value = savedKey || "";
+
+      if (urlInput) {
+        const savedUrl = localStorage.getItem("lexuz_base_url_" + p);
+        urlInput.value = savedUrl || (p === "custom" ? "http://localhost:11434/v1" : "");
+      }
+
+      if (p === "deepseek") {
+        keyInput.placeholder = "DeepSeek API Key (yoki .env dan)...";
+      } else if (p === "openai") {
+        keyInput.placeholder = "OpenAI API Key (sk-...)...";
+      } else if (p === "anthropic") {
+        keyInput.placeholder = "Anthropic API Key (sk-ant-...)...";
+      } else if (p === "gemini") {
+        keyInput.placeholder = "Gemini API Key (AIza...)...";
+      } else {
+        keyInput.placeholder = "Custom API Key (ixtiyoriy)...";
+      }
+    }
+
+    function onApiKeyInput() {
+      const p = document.getElementById("llmProviderSelect").value;
+      const val = document.getElementById("llmApiKeyInput").value.trim();
+      if (val) {
+        localStorage.setItem("lexuz_key_" + p, val);
+      } else {
+        localStorage.removeItem("lexuz_key_" + p);
+      }
+    }
+
+    function onBaseUrlInput() {
+      const p = document.getElementById("llmProviderSelect").value;
+      const val = document.getElementById("llmBaseUrlInput").value.trim();
+      if (val) {
+        localStorage.setItem("lexuz_base_url_" + p, val);
+      } else {
+        localStorage.removeItem("lexuz_base_url_" + p);
+      }
+    }
+
     function getApiKey() {
       return localStorage.getItem("lexuz_api_key") || document.getElementById("apiKeyInput").value || "lexuz-test-api-key";
     }
@@ -473,6 +581,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       if (stored) {
         document.getElementById("apiKeyInput").value = stored;
       }
+      onProviderChange(false);
       fetchMetaAndHealth();
       loadSampleBatch();
     });
@@ -485,7 +594,17 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         ]);
         if (metaRes.ok) {
           const meta = await metaRes.json();
-          document.getElementById("metaLLM").innerText = meta.llm_model;
+          const pLabel = meta.llm_provider ? (meta.llm_provider + ": ") : "";
+          document.getElementById("metaLLM").innerText = pLabel + meta.llm_model;
+          if (meta.llm_provider) {
+            const provSel = document.getElementById("llmProviderSelect");
+            if (provSel) {
+              provSel.value = meta.llm_provider;
+              const mdlInput = document.getElementById("llmModelInput");
+              if (mdlInput && meta.llm_model) mdlInput.value = meta.llm_model;
+              onProviderChange(false);
+            }
+          }
           document.getElementById("metaEmb").innerText = meta.embedding_model;
           document.getElementById("metaRerank").innerText = meta.reranker;
           document.getElementById("metaIndex").innerText = meta.index_version;
@@ -557,6 +676,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       const topK = parseInt(document.getElementById("singleTopK").value, 10);
       const lang = document.getElementById("singleLang").value;
       const temp = parseFloat(document.getElementById("singleTemp").value);
+      const provider = document.getElementById("llmProviderSelect").value;
+      const model = document.getElementById("llmModelInput").value.trim();
+      const apiKeyVal = document.getElementById("llmApiKeyInput").value.trim();
+      const baseUrlEl = document.getElementById("llmBaseUrlInput");
+      const baseUrlVal = (baseUrlEl && provider === "custom") ? baseUrlEl.value.trim() : "";
+      if (apiKeyVal) {
+        localStorage.setItem("lexuz_key_" + provider, apiKeyVal);
+      }
       const submitBtn = document.getElementById("singleSubmitBtn");
 
       submitBtn.disabled = true;
@@ -576,6 +703,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
               answer_language: lang,
               temperature: temp,
               style: currentStyle,
+              provider: provider,
+              model: model || undefined,
+              api_key: apiKeyVal || undefined,
+              base_url: baseUrlVal || undefined,
               return_contexts: true,
               return_debug: true
             }
@@ -622,6 +753,29 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         } else {
           styleBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
           styleBadge.innerText = "🟢 Oddiy tilda";
+        }
+      }
+
+      // Provider & Model badge
+      const provBadge = document.getElementById("resProviderBadge");
+      if (provBadge) {
+        const p = item.llm_provider || (item.debug && item.debug.llm_provider) || document.getElementById("llmProviderSelect").value || "deepseek";
+        const m = item.llm_model || (item.debug && item.debug.llm_model) || document.getElementById("llmModelInput").value || "deepseek-chat";
+        if (p === "deepseek") {
+          provBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30";
+          provBadge.innerText = `🟣 DeepSeek (${m})`;
+        } else if (p === "openai") {
+          provBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+          provBadge.innerText = `🟢 OpenAI (${m})`;
+        } else if (p === "anthropic" || p === "claude") {
+          provBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+          provBadge.innerText = `🟠 Claude (${m})`;
+        } else if (p === "gemini") {
+          provBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30";
+          provBadge.innerText = `🔵 Gemini (${m})`;
+        } else {
+          provBadge.className = "px-2.5 py-1 rounded-full text-xs font-bold bg-slate-700 text-slate-200 border border-slate-600";
+          provBadge.innerText = `⚙️ ${p} (${m})`;
         }
       }
 
@@ -779,7 +933,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             return_contexts: true,
             return_debug: true,
             temperature: 0.0,
-            style: batchStyle
+            style: batchStyle,
+            provider: document.getElementById("llmProviderSelect").value,
+            model: document.getElementById("llmModelInput").value.trim() || undefined,
+            api_key: document.getElementById("llmApiKeyInput").value.trim() || undefined,
+            base_url: (document.getElementById("llmBaseUrlInput") && document.getElementById("llmProviderSelect").value === "custom") ? document.getElementById("llmBaseUrlInput").value.trim() || undefined : undefined
           },
           items: items
         };

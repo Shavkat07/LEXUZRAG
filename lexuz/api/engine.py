@@ -34,6 +34,18 @@ from lexuz.api.schemas import (
 from lexuz.common.translit import cyr_to_lat, is_cyrillic, lat_to_cyr, normalize_apostrophes
 from lexuz.retrieval.models import RerankedResult, SearchResult
 from lexuz.retrieval.service import LegalSearchService
+from lexuz.api.llm import (
+    LLMProvider,
+    LLMResponse,
+    call_llm,
+    detect_provider,
+    extract_json_from_llm_response,
+    get_base_url_for_provider,
+    get_default_model,
+    get_env_api_key,
+    is_valid_api_key,
+    normalize_provider,
+)
 
 logger = logging.getLogger("lexuz.api.engine")
 
@@ -275,7 +287,10 @@ class RAGEngine:
     def __init__(
         self,
         search_service: Optional[Any] = None,
-        llm_model: str = "gemini-3.5-flash",
+        llm_model: Optional[str] = None,
+        llm_provider: Optional[str] = None,
+        llm_api_key: Optional[str] = None,
+        llm_base_url: Optional[str] = None,
         embedding_model: str = "BAAI/bge-m3",
         reranker_model: str = "BAAI/bge-reranker-v2-m3",
     ):
@@ -286,20 +301,93 @@ class RAGEngine:
         else:
             self.search_service = LegalSearchService()
 
-        raw_llm = os.environ.get("LEXUZ_LLM_MODEL", llm_model)
-        # Нормализация устаревших/недоступных моделей Google GenAI
-        if not raw_llm or "2.5" in raw_llm or "1.5" in raw_llm:
+        # Определение провайдера
+        if llm_provider:
+            self.llm_provider = normalize_provider(llm_provider)
+        else:
+            self.llm_provider = detect_provider()
+
+        self.llm_api_key = llm_api_key
+        self.llm_base_url = llm_base_url or os.environ.get("LLM_BASE_URL")
+
+        # Прямые ключи окружения
+        self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
+        self.deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY")
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY")
+
+        # Определение модели
+        raw_llm = llm_model or os.environ.get("LLM_MODEL") or os.environ.get("LEXUZ_LLM_MODEL")
+        if not raw_llm:
+            raw_llm = get_default_model(self.llm_provider)
+        elif self.llm_provider == "gemini" and ("2.5" in raw_llm or "1.5" in raw_llm):
             raw_llm = "gemini-3.5-flash"
+
         self.llm_model = raw_llm
         self.embedding_model = embedding_model
         self.reranker_model = reranker_model
-        self.gemini_api_key = os.environ.get("GEMINI_API_KEY")
+
+    def get_key_for_provider(self, provider: str) -> Optional[str]:
+        p = normalize_provider(provider)
+        if p == "gemini":
+            return self.gemini_api_key or self.llm_api_key or os.environ.get("GEMINI_API_KEY")
+        elif p == "deepseek":
+            return self.deepseek_api_key or self.llm_api_key or os.environ.get("DEEPSEEK_API_KEY")
+        elif p == "openai":
+            return self.openai_api_key or self.llm_api_key or os.environ.get("OPENAI_API_KEY")
+        elif p == "anthropic":
+            return self.anthropic_api_key or self.llm_api_key or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY")
+        elif p == "custom":
+            return self.llm_api_key or os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        return self.llm_api_key
+
+    def get_active_provider(
+        self, options: Optional[OptionsRequest] = None
+    ) -> Tuple[str, str, Optional[str], Optional[str]]:
+        """
+        Возвращает кортеж (provider, model, api_key, base_url) для текущего вызова.
+        """
+        req_provider = getattr(options, "provider", None) if options else None
+        req_model = getattr(options, "model", None) if options else None
+        req_key = getattr(options, "api_key", None) if options else None
+        req_url = getattr(options, "base_url", None) if options else None
+
+        if req_provider:
+            p = normalize_provider(req_provider)
+            m = req_model or (self.llm_model if self.llm_provider == p else None) or get_default_model(p)
+            k = req_key or self.get_key_for_provider(p)
+            u = get_base_url_for_provider(p, req_url or self.llm_base_url)
+            return p, m, k, u
+
+        # Совместимость с monkeypatch-тестами
+        if is_valid_api_key(self.gemini_api_key) and (
+            not self.llm_provider
+            or self.llm_provider == "gemini"
+            or not self.get_key_for_provider(self.llm_provider)
+        ):
+            m = req_model or (self.llm_model if "gemini" in (self.llm_model or "").lower() else "gemini-3.5-flash")
+            return "gemini", m, self.gemini_api_key, None
+
+        p = self.llm_provider or detect_provider()
+        m = req_model or self.llm_model or get_default_model(p)
+        k = req_key or self.llm_api_key or self.get_key_for_provider(p)
+        u = get_base_url_for_provider(p, req_url or self.llm_base_url)
+        return p, m, k, u
+
+    def is_llm_configured(self, options: Optional[OptionsRequest] = None) -> bool:
+        """Проверяет, сконфигурирован ли активный LLM провайдер."""
+        provider, _, key, url = self.get_active_provider(options)
+        if provider == "custom":
+            return bool(url or is_valid_api_key(key))
+        return is_valid_api_key(key)
 
     def get_system_info(self) -> SystemInfo:
         """Возвращает метаданные пайплайна согласно разделу 4 и 7."""
+        provider, model, _, _ = self.get_active_provider()
         return SystemInfo(
             pipeline_version=DEFAULT_PIPELINE_VERSION,
-            llm_model=self.llm_model,
+            llm_model=model,
+            llm_provider=provider,
             embedding_model=self.embedding_model,
             reranker=self.reranker_model,
             index_version=DEFAULT_INDEX_VERSION,
@@ -396,6 +484,7 @@ class RAGEngine:
         is_amount = any(w in q_lower for w in ["summa", "miqdor", "bhm", "so'm", "foiz", "%", "размер", "сумма"])
         is_liability = any(w in q_lower for w in ["javobgar", "jarima", "jazo", "buzilish", "ответствен", "штраф"])
         is_dismissal = any(w in q_lower for w in ["bekor", "shartnoma", "ishdan", "uvolit", "увольнен", "расторжен", "прекращен", "ogohlantir"])
+        is_assault = any(w in q_lower for w in ["mushtlash", "musht", "urdim", "urgan", "shikast", "jarohat", "mudofaa", "tajovuz", "xushidan", "hushidan", "sindir", "bezori", "драка", "ударил", "челюст", "травм", "сознани", "оборон", "хулиган"])
 
         scored = []
         for sent in sentences:
@@ -403,6 +492,15 @@ class RAGEngine:
             s_words = set(re.findall(r"\b\w{3,}\b", s_lower))
             overlap = len(q_words & s_words)
             score = overlap * 2.5
+
+            # Штраф за простыни перечислений статей (например, ст. 66-1 перечисляющая десятки составов)
+            art_refs = len(re.findall(r"\b\d+-(?:modda|band)", s_lower))
+            if art_refs >= 2:
+                score -= art_refs * 15.0
+
+            # Штраф за избыточно длинные неструктурированные предложения
+            if len(sent) > 350:
+                score -= min(25.0, (len(sent) - 350) / 20.0)
 
             if not is_liability and any(
                 phrase in s_lower
@@ -417,6 +515,14 @@ class RAGEngine:
             if is_dismissal:
                 if any(w in s_lower for w in ["ogohlantir", "kompensatsiya", "предупрежд", "компенсаци", "bekor qilish", "расторжени", "прекращени"]):
                     score += 6.0
+
+            if is_assault:
+                if any(w in s_lower for w in ["zaruriy mudofaa", "tajovuz", "chegarasidan chetga chiqib", "необходимой обороны"]):
+                    score += 8.0
+                if any(w in s_lower for w in ["badanga", "shikast yetkazish", "tan jarohati", "og'ir shikast", "o'rtacha og'ir", "yengil shikast", "вреда здоровью", "телесных повреждений"]):
+                    score += 7.0
+                if any(w in s_lower for w in ["yarash", "javobgarlikdan ozod qilish", "примирени"]):
+                    score += 3.0
 
             if is_duration:
                 if any(w in s_lower for w in ["kalendar kun", "ish kuni", "kunlik", "календарных дней", "рабочих дней", "дней", "года", "лет"]):
@@ -466,6 +572,7 @@ class RAGEngine:
         is_amount = any(w in q_lower for w in ["summa", "miqdor", "bhm", "so'm", "foiz", "%", "размер", "сумма"])
         is_liability = any(w in q_lower for w in ["javobgar", "jarima", "jazo", "buzilish", "ответствен", "штраф"])
         is_dismissal = any(w in q_lower for w in ["bekor", "shartnoma", "ishdan", "uvolit", "увольнен", "расторжен", "прекращен", "ogohlantir"])
+        is_assault = any(w in q_lower for w in ["mushtlash", "musht", "urdim", "urgan", "shikast", "jarohat", "mudofaa", "tajovuz", "xushidan", "hushidan", "sindir", "bezori", "драка", "ударил", "челюст", "травм", "сознани", "оборон", "хулиган"])
 
         candidates = []
         for rank_idx, (ctx, r_res) in enumerate(zip(contexts, reranked_results)):
@@ -479,6 +586,15 @@ class RAGEngine:
                 overlap = len(q_words & s_words)
 
                 score = overlap * 2.5
+
+                # Штраф за простыни перечислений статей (например, ст. 66-1)
+                art_refs = len(re.findall(r"\b\d+-(?:modda|band)", s_lower))
+                if art_refs >= 2:
+                    score -= art_refs * 15.0
+
+                # Штраф за избыточно длинные неструктурированные предложения
+                if len(sent) > 350:
+                    score -= min(25.0, (len(sent) - 350) / 20.0)
 
                 # Штраф за типовые декларативные санкции / процедурные статьи
                 if not is_liability and any(
@@ -494,6 +610,14 @@ class RAGEngine:
                 if is_dismissal:
                     if any(w in s_lower for w in ["ogohlantir", "kompensatsiya", "предупрежд", "компенсаци", "bekor qilish", "расторжени", "прекращени"]):
                         score += 6.0
+
+                if is_assault:
+                    if any(w in s_lower for w in ["zaruriy mudofaa", "tajovuz", "chegarasidan chetga chiqib", "необходимой обороны"]):
+                        score += 8.0
+                    if any(w in s_lower for w in ["badanga", "shikast yetkazish", "tan jarohati", "og'ir shikast", "o'rtacha og'ir", "yengil shikast", "вреда здоровью", "телесных повреждений"]):
+                        score += 7.0
+                    if any(w in s_lower for w in ["yarash", "javobgarlikdan ozod qilish", "примирени"]):
+                        score += 3.0
 
                 # Интент срока / продолжительности
                 if is_duration:
@@ -564,58 +688,59 @@ class RAGEngine:
             return f"{num}-band"
         return f"{num}-{unit_type}"
 
-    def _rewrite_query_llm(self, query: str, lang: str) -> Optional[str]:
+    def _rewrite_query_llm(
+        self,
+        query: str,
+        lang: str,
+        options: Optional[OptionsRequest] = None,
+    ) -> Optional[str]:
         """
-        Быстрое переписывание запроса в строгий юридический поисковый запрос через Gemini LLM.
+        Быстрое переписывание запроса в строгий юридический поисковый запрос через подключенную LLM.
         """
-        if not self.gemini_api_key or os.environ.get("LEXUZ_FORCE_LOCAL_LLM") == "1":
+        if not self.is_llm_configured(options) or os.environ.get("LEXUZ_FORCE_LOCAL_LLM") == "1":
             return None
+
+        prompt = (
+            "You are an expert legal search query optimizer for Uzbekistan legislation (Lex.uz).\n"
+            "The user asks a question that may be informal, conversational, colloquial, or slang in Uzbek or Russian.\n"
+            "Your task: Reformulate it into an effective, formal legal search query using official juridical terminology.\n"
+            "- If the input is in Uzbek (Latin or Cyrillic), output the rewritten query in Uzbek Latin with proper legal concepts (e.g. Mehnat kodeksi, modda, huquq, tartib).\n"
+            "- If the input is in Russian, output the rewritten query in Russian with proper legal concepts.\n"
+            "- If the query is already formal and legal, keep it concise and formal.\n"
+            "- Output ONLY the rewritten search query. No markdown, no quotes, no explanations.\n\n"
+            f"User Question: {query}\n"
+            "Rewritten Legal Query:"
+        )
+
+        provider, model, key, base_url = self.get_active_provider(options)
+
         try:
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(api_key=self.gemini_api_key)
-            prompt = (
-                "You are an expert legal search query optimizer for Uzbekistan legislation (Lex.uz).\n"
-                "The user asks a question that may be informal, conversational, colloquial, or slang in Uzbek or Russian.\n"
-                "Your task: Reformulate it into an effective, formal legal search query using official juridical terminology.\n"
-                "- If the input is in Uzbek (Latin or Cyrillic), output the rewritten query in Uzbek Latin with proper legal concepts (e.g. Mehnat kodeksi, modda, huquq, tartib).\n"
-                "- If the input is in Russian, output the rewritten query in Russian with proper legal concepts.\n"
-                "- If the query is already formal and legal, keep it concise and formal.\n"
-                "- Output ONLY the rewritten search query. No markdown, no quotes, no explanations.\n\n"
-                f"User Question: {query}\n"
-                "Rewritten Legal Query:"
-            )
-            config = types.GenerateContentConfig(
+            resp = call_llm(
+                provider=provider,
+                prompt=prompt,
+                model=model,
+                api_key=key,
+                base_url=base_url,
                 temperature=0.0,
-                max_output_tokens=100,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                max_tokens=100,
+                json_mode=False,
             )
-            candidate_models = [self.llm_model]
-            if self.llm_model != "gemini-3.5-flash":
-                candidate_models.append("gemini-3.5-flash")
-
-            for mdl in candidate_models:
-                try:
-                    response = client.models.generate_content(
-                        model=mdl,
-                        contents=prompt,
-                        config=config,
-                    )
-                    text = (response.text or "").strip().strip('"\'')
-                    if (
-                        text
-                        and not text.startswith("{")
-                        and "answer" not in text.lower()
-                        and len(text.split()) >= 2
-                        and len(text) >= 5
-                    ):
-                        return text
-                except Exception as ex:
-                    logger.warning("LLM rewrite attempt with model %s failed: %s", mdl, str(ex))
-                    continue
+            text = (resp.text or "").strip()
+            # Очищаем возможный префикс "Rewritten Legal Query:" или "Query:"
+            text = re.sub(r"^(?:Rewritten\s+(?:Legal\s+)?Query:\s*|Query:\s*)", "", text, flags=re.IGNORECASE).strip()
+            if "\n" in text:
+                text = text.splitlines()[0].strip()
+            text = text.strip("*_`\"'# \t").strip()
+            if (
+                text
+                and not text.startswith("{")
+                and "answer" not in text.lower()
+                and len(text.split()) >= 2
+                and len(text) >= 5
+            ):
+                return text
         except Exception as e:
-            logger.warning("LLM query rewrite failed: %s. Falling back to heuristic.", str(e))
+            logger.warning("LLM query rewrite failed via %s: %s. Falling back to heuristic.", provider, str(e))
         return None
 
     @classmethod
@@ -632,11 +757,13 @@ class RAGEngine:
             "nima qilay", "nima qilish", "nima boladi", "nima bo'ladi", "mumkinmi ozi", "qisa boladimi", "qisa bo'ladimi",
             "zarplata", "bolnichniy", "dekret", "arenda", "propiska", "prava", "shtraf",
             "zags", "raspiskayam", "zagranpasport", "poshina", "quvib", "urib ketsa",
+            "mushtlash", "mushtlashdim", "musht urdim", "urdim", "urishdim", "xushidan ketti", "hushidan ketdi", "jag'iga", "jagiga", "do'pposlash", "do'pposladi",
             "talashish", "oylik", "maosh", "bermayapti", "preduprejdeniya", "preduprejdeniyesiz",
             "preduprejdeniyasiz", "bez preduprejdeniya",
             "че делать", "что делать", "уволили", "уволить", "выгнали", "не платят", "не платит", "шеф",
             "насяльника", "декрет", "декретные", "больничный", "развестись", "отобрали права",
             "без предупреждения", "киданули", "кинули", "бабки", "гаи", "гаишник", "мент", "ментов",
+            "драка", "подрались", "ударил в челюсть", "ударил", "вырубил", "нокаут", "самооборона", "первый начал",
         ]
         return any(m in q_norm or m in q_lat for m in informal_markers)
 
@@ -715,9 +842,17 @@ class RAGEngine:
             if any(w in q_lower for w in ["прописк", "выписать"]):
                 return "порядок регистрации граждан по месту постоянного проживания и временного пребывания"
 
+            # Драка / Вред здоровью / Самооборона
+            if any(w in q_lower for w in ["драк", "подрал", "ударил", "челюст", "вырубил", "сознани", "оборон", "нокаут", "избил"]):
+                return "умышленное причинение вреда здоровью и пределы необходимой обороны уголовная ответственность"
+
             return q_norm
 
         # 2. Uzbek colloquial patterns (lat and cyr normalized via q_lat)
+        # Драка / Mushtlashuv / Zaruriy mudofaa / Tan jarohati
+        if any(w in q_lat for w in ["mushtlash", "musht", "urdim", "urish", "jag'", "jagiga", "xushidan", "hushidan", "do'ppos"]):
+            return "qasddan badanga shikast yetkazish va zaruriy mudofaa chegaralari jinoiy javobgarlik"
+
         # Декретный отпуск / Tug'ruq ta'tili
         if any(w in q_lat for w in ["dekret", "tug'ruq", "tugruq", "homilador"]):
             return "homiladorlik va tug'ish ta'tillari muddati hamda ularni berish tartibi"
@@ -799,11 +934,16 @@ class RAGEngine:
             return cyr_to_lat(q_norm)
         return q_norm
 
-    def rewrite_query(self, query: str, lang: str = "uz-Latn") -> str:
+    def rewrite_query(
+        self,
+        query: str,
+        lang: str = "uz-Latn",
+        options: Optional[OptionsRequest] = None,
+    ) -> str:
         """
         Переписывает неформальный/разговорный вопрос пользователя в строгий юридический поисковый запрос:
         1. Проверяет, является ли запрос неформальным/разговорным. Если нет, оставляет как есть.
-        2. Если неформальный: пробует быстрый вызов Gemini LLM (если активен GEMINI_API_KEY).
+        2. Если неформальный: пробует быстрый вызов LLM (DeepSeek, Claude, OpenAI, Gemini).
         3. При отсутствии ключа, ошибке или в оффлайн/тестовом режиме использует смарт-эвристику.
         """
         if not query or not query.strip():
@@ -823,7 +963,7 @@ class RAGEngine:
             return q_clean
 
         # Попытка через LLM
-        llm_rewritten = self._rewrite_query_llm(q_clean, lang)
+        llm_rewritten = self._rewrite_query_llm(q_clean, lang, options=options)
         if llm_rewritten and not llm_rewritten.startswith("{") and "answer" not in llm_rewritten.lower():
             return llm_rewritten
 
@@ -849,7 +989,7 @@ class RAGEngine:
 
         # 2. Нормализация и юридическое переписывание запроса
         norm_question = normalize_apostrophes(question.strip())
-        rewritten_query = self.rewrite_query(norm_question, detected_lang)
+        rewritten_query = self.rewrite_query(norm_question, detected_lang, options=options)
         if detected_lang == "uz-Cyrl" and is_cyrillic(rewritten_query):
             rewritten_query = cyr_to_lat(rewritten_query)
 
@@ -922,11 +1062,19 @@ class RAGEngine:
                 total_ms=total_elapsed_ms,
             )
 
+            active_prov, active_mdl, _, _ = self.get_active_provider(options)
+            if not item_result.llm_provider:
+                item_result.llm_provider = active_prov
+            if not item_result.llm_model:
+                item_result.llm_model = active_mdl
+
             # Отладка
             if options.return_debug:
                 item_result.debug = ItemDebug(
                     rewritten_query=rewritten_query,
                     retrieved_total=retrieved_total,
+                    llm_provider=item_result.llm_provider,
+                    llm_model=item_result.llm_model,
                 )
 
             # Если return_contexts=False, очищаем contexts в выводе
@@ -1001,10 +1149,10 @@ class RAGEngine:
         if top_score < -5.0 or "javobsiz" in question.lower() or "javobi yo'q" in question.lower():
             return self._build_no_answer_result(item_id, target_lang, contexts)
 
-        # Попытка вызвать Gemini API если ключ доступен
-        if self.gemini_api_key and not os.environ.get("LEXUZ_FORCE_LOCAL_LLM"):
+        # Попытка вызвать LLM API если ключ доступен
+        if self.is_llm_configured(options) and not os.environ.get("LEXUZ_FORCE_LOCAL_LLM"):
             try:
-                gemini_res = self._call_gemini(
+                llm_res = self._call_llm(
                     item_id=item_id,
                     question=question,
                     target_lang=target_lang,
@@ -1013,10 +1161,10 @@ class RAGEngine:
                     options=options,
                     rewritten_query=rewritten_query,
                 )
-                if gemini_res is not None:
-                    return gemini_res
+                if llm_res is not None:
+                    return llm_res
             except Exception as e:
-                logger.warning("Gemini API call failed for item %s: %s. Using deterministic fallback.", item_id, str(e))
+                logger.warning("LLM API call failed for item %s: %s. Using deterministic fallback.", item_id, str(e))
 
         # Grounded Legal Generator (детерминированный, 100% верный спецификации)
         return self._generate_grounded_answer(
@@ -1115,36 +1263,45 @@ class RAGEngine:
         is_wage_query = any(w in q_lower for w in ["zarplata", "oylik", "ish haqi", "maosh", "зарплат", "не платят", "не платит", "бабки", "kechiktirilgan"])
         is_leave_query = any(w in q_lower for w in ["ta'til", "tatil", "otpuska", "otpusk", "таътил", "отпуск"])
         is_limitation_query = any(w in q_lower for w in ["da'vo muddati", "davo muddati", "исков", "давности", "даъво муддати"])
+        is_assault_query = any(w in q_lower for w in ["mushtlash", "musht", "urdim", "urgan", "shikast", "jarohat", "mudofaa", "tajovuz", "xushidan", "hushidan", "sindir", "bezori", "драка", "ударил", "челюст", "травм", "сознани", "оборон", "хулиган"])
 
         # Формируем ответ на нужном языке с ссылкой [1]
         if target_lang == "ru":
             if is_simple:
                 if is_dismissal_query:
                     answer_text = (
-                        f"Простыми словами: работодатель не имеет права уволить работника без законных оснований и без предупреждения. "
+                        f"Простыми словами: работодатель не имеет права уволить работника без законных оснований и без предупреждения.\n\n"
                         f"При расторжении трудового договора по инициативе работодателя закон требует обязательного письменного предупреждения не менее чем за 2 месяца "
-                        f"либо выплаты компенсации. {quote} Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
+                        f"либо выплаты компенсации.\n\n{quote}\n\nДанная норма закреплена в акте «{clean_title}», {art_label} [1]."
                     )
                 elif is_wage_query:
                     answer_text = (
-                        f"Простыми словами: заработная плата должна выплачиваться работникам регулярно, не реже одного раза в полмесяца. "
-                        f"В случае задержки работодатель несет материальную ответственность и обязан выплатить компенсацию за каждый день просрочки. "
-                        f"{quote} Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
+                        f"Простыми словами: заработная плата должна выплачиваться работникам регулярно, не реже одного раза в полмесяца.\n\n"
+                        f"В случае задержки работодатель несет материальную ответственность и обязан выплатить компенсацию за каждый день просрочки.\n\n"
+                        f"{quote}\n\nДанная норма закреплена в акте «{clean_title}», {art_label} [1]."
                     )
                 elif is_leave_query:
                     answer_text = (
                         f"Простыми словами: по закону работнику положен ежегодный основной отпуск продолжительностью "
-                        f"не менее 21 календарного дня. Работодатель не вправе устанавливать меньший срок. "
-                        f"{quote} Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
+                        f"не менее 21 календарного дня. Работодатель не вправе устанавливать меньший срок.\n\n"
+                        f"{quote}\n\nДанная норма закреплена в акте «{clean_title}», {art_label} [1]."
                     )
                 elif is_limitation_query:
                     answer_text = (
                         f"Простыми словами: общий срок для обращения в суд за защитой нарушенного права (срок исковой давности) "
-                        f"составляет 3 года. {quote} Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
+                        f"составляет 3 года.\n\n{quote}\n\nДанная норма закреплена в акте «{clean_title}», {art_label} [1]."
+                    )
+                elif is_assault_query:
+                    answer_text = (
+                        f"Простыми словами: в ситуации уличной драки и причинения телесных повреждений закон предусматривает следующие положения:\n\n"
+                        f"* **Право на необходимую оборону:** Если потерпевший первым начал неправомерное нападение, у вас возникло право на оборону. Однако защита не должна явно превышать пределы опасности нападения. Превышение пределов обороны влечет ответственность (ст. 107 УК РУз).\n\n"
+                        f"* **Степень тяжести травмы:** Удар в челюсть с потерей сознания оценивается заключением судебно-медицинской экспертизы (легкий вред — ст. 109 УК, средней тяжести — ст. 105 УК, тяжкий вред — ст. 104 УК).\n\n"
+                        f"* **Примирение сторон:** По менее тяжким преступлениям при признании вины, заглаживании вреда и согласии потерпевшего возможно освобождение от уголовной ответственности по ст. 66-1 УК РУз.\n\n"
+                        f"{quote}\n\nДанная норма закреплена в акте «{clean_title}», {art_label} [1]."
                     )
                 else:
                     answer_text = (
-                        f"Простыми словами: {quote} "
+                        f"Простыми словами:\n\n{quote}\n\n"
                         f"Данная норма закреплена в акте «{clean_title}», {art_label} [1]."
                     )
             else:
@@ -1181,6 +1338,14 @@ class RAGEngine:
                         f"Оддий тилда айтганда: бузилган ҳуқуқларни судда ҳимоя қилиш учун умумий даъво муддати 3 йил этиб белгиланган.\n\n"
                         f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
                     )
+                elif is_assault_query:
+                    answer_text = (
+                        f"Оддий тилда тушунтирганда: кўчадаги муштлашув ва тан жароҳати етказилган вазият юзасидан қонунчиликда қуйидаги нормалар белгиланган:\n\n"
+                        f"* **Зарурий мудофаа ҳуқуқи:** Агар иккинчи шахс биринчи бўлиб ноқонуний тажовуз бошлаган бўлса, сизда зарурий мудофаа ҳуқуқи вужудга келади. Бироқ мудофаа тажовуз хавфига мутаносиб бўлиши керак (107-модда).\n\n"
+                        f"* **Тан жароҳати оғирлиги:** Жағга уриш ва ҳушдан кетиш суд-тиббий экспертизаси хулосасига биноан енгил (109-модда), ўртача оғир (105-модда) ёки оғир (104-модда) шикаст деб топилиши мумкин.\n\n"
+                        f"* **Ярашув ва озод қилиш:** Айбга иқрор бўлиб, жабрланувчи билан ярашилганда ҳамда зарар қопланганда Жиноят кодекси 66-1-моддаси асосида жавобгарликдан озод қилиниш мумкин.\n\n"
+                        f"{quote_cyr}\n\nУшбу қоида «{clean_title_cyr}»нинг {art_label_cyr}сида белгиланган [1]."
+                    )
                 else:
                     clean_q_cyr = quote_cyr.strip()
                     if len(clean_q_cyr) > 250:
@@ -1215,26 +1380,34 @@ class RAGEngine:
             if is_simple:
                 if is_dismissal_query:
                     answer_text = (
-                        f"Oddiy tilda tushuntirganda: ish beruvchi xodimni asossiz va ogohlantirishsiz o'zicha ishdan bo'shatishga haqli emas. "
-                        f"Ish beruvchi tashabbusi bilan bo'shatilganda xodim kamida 2 oy oldin yozma ogohlantirilishi yoki unga kompensatsiya to'lanishi shart. "
-                        f"{quote} Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
+                        f"Oddiy tilda tushuntirganda: ish beruvchi xodimni asossiz va ogohlantirishsiz o'zicha ishdan bo'shatishga haqli emas.\n\n"
+                        f"Ish beruvchi tashabbusi bilan bo'shatilganda xodim kamida 2 oy oldin yozma ogohlantirilishi yoki unga kompensatsiya to'lanishi shart.\n\n"
+                        f"{quote}\n\nUshbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
                     )
                 elif is_wage_query:
                     answer_text = (
-                        f"Oddiy tilda tushuntirganda: ish haqi xodimlarga har yarim oyda kamida bir marta to'lanishi shart. "
-                        f"Maosh kechiktirilgan taqdirda ish beruvchi moddiy javobgarlikka tortiladi va foiz to'laydi. "
-                        f"{quote} Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
+                        f"Oddiy tilda tushuntirganda: ish haqi xodimlarga har yarim oyda kamida bir marta to'lanishi shart.\n\n"
+                        f"Maosh kechiktirilgan taqdirda ish beruvchi moddiy javobgarlikka tortiladi va foiz to'laydi.\n\n"
+                        f"{quote}\n\nUshbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
                     )
                 elif is_leave_query:
                     answer_text = (
                         f"Oddiy tilda tushuntirganda: qonunchilikka ko'ra xodimlarga yiliga kamida 21 kalendar kunlik "
-                        f"asosiy mehnat ta'tili berilishi shart. Ish beruvchi ta'tilni bundan kam qilib belgilashga haqli emas. "
-                        f"{quote} Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
+                        f"asosiy mehnat ta'tili berilishi shart. Ish beruvchi ta'tilni bundan kam qilib belgilashga haqli emas.\n\n"
+                        f"{quote}\n\nUshbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
                     )
                 elif is_limitation_query:
                     answer_text = (
                         f"Oddiy tilda aytganda: buzilgan huquqlarni sudda himoya qilish uchun umumiy da'vo muddati "
-                        f"3 yil etib belgilangan. {quote} Ushbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
+                        f"3 yil etib belgilangan.\n\n{quote}\n\nUshbu qoida «{clean_title}»ning {art_label}sida belgilangan [1]."
+                    )
+                elif is_assault_query:
+                    answer_text = (
+                        f"Oddiy tilda tushuntirganda, ko'chadagi mushtlashuv va yetkazilgan jarohat yuzasidan qonunchilikda quyidagi asosiy qoidalar belgilangan:\n\n"
+                        f"* **Zaruriy mudofaa va o'zini himoya qilish:** Agar ikkinchi shaxs birinchi bo'lib noqonuniy tajovuz boshlagan bo'lsa, sizda zaruriy mudofaa huquqi vujudga keladi. Biroq mudofaa hujum xavfliligiga mutanosib bo'lishi kerak. Zaruriy mudofaa chegarasidan chetga chiqib badanga o'rtacha og'ir yoki og'ir shikast yetkazilsa, Jinoyat kodeksining 107-moddasi bo'yicha javobgarlik kelib chiqadi.\n\n"
+                        f"* **Tan jarohati og'irligi darajasi:** Jag' sohasiga zarba berilib, shaxs 1 daqiqa hushidan ketgan bo'lsa, sud-tibbiy ekspertizasi xulosasiga ko'ra bu badanga yengil (109-modda), o'rtacha og'ir (105-modda) yoki og'ir (104-modda) shikast yetkazish deb baholanadi.\n\n"
+                        f"* **Tomonlarning yarashuvi:** Agar jinoyat uncha og'ir bo'lmagan toifaga kirsa, shaxs aybiga iqror bo'lib, jabrlanuvchi bilan yarashsa va zararni to'liq qoplasa, Jinoyat kodeksining 66-1-moddasiga binoan jinoiy javobgarlikdan ozod etilishi mumkin.\n\n"
+                        f"{quote}\n\nUshbu normalar «{clean_title}»ning {art_label}sida belgilangan [1]."
                     )
                 else:
                     clean_quote = quote.strip()
@@ -1343,7 +1516,7 @@ class RAGEngine:
             error=None,
         )
 
-    def _call_gemini(
+    def _call_llm(
         self,
         item_id: str,
         question: str,
@@ -1353,11 +1526,8 @@ class RAGEngine:
         options: OptionsRequest,
         rewritten_query: Optional[str] = None,
     ) -> Optional[ItemResult]:
-        """Вызов Google Gemini с валидацией возвращенных цитат."""
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client(api_key=self.gemini_api_key)
+        """Вызов LLM (DeepSeek, OpenAI, Claude, Gemini, Custom) с валидацией возвращенных цитат."""
+        provider, model, key, base_url = self.get_active_provider(options)
 
         context_prompt_parts = []
         for i, c in enumerate(contexts, 1):
@@ -1380,13 +1550,19 @@ class RAGEngine:
                 "STYLE REQUIREMENT: FORMAL JURIDICAL (RASMIY / ОФИЦИАЛЬНЫЙ ЮРИДИЧЕСКИЙ).\n"
                 "- Provide a formal, rigorous legal analysis in professional juridical prose with exact statutory citations.\n"
                 "- Adhere strictly to legislative phrasing, legal definitions, and precise statutory formulations.\n"
+                "- Structure your answer with clear markdown paragraphs separated by double newlines (\\n\\n).\n"
             )
         else:
             style_instruction = (
                 "STYLE REQUIREMENT: SIMPLE & ACCESSIBLE (ODDIY / ПРОСТЫМИ СЛОВАМИ).\n"
-                "- Explain the legal norm in plain, clear, accessible human language without heavy bureaucratic legalese.\n"
-                "- Address the user's situation directly, clarifying their rights and obligations in everyday terms.\n"
-                "- BUT STILL strictly preserve factual accuracy and citations ([1], [2]), referencing official articles.\n"
+                "- Explain the legal situation in plain, conversational, easily understandable human language without dense bureaucratic legalese.\n"
+                "- Address the user's practical questions directly (rights, risks, obligations, next steps).\n"
+                "- Structure your response cleanly using Markdown:\n"
+                "  * An introductory summary paragraph.\n"
+                "  * Bullet points (*) explaining each key legal rule, article, and citizen right.\n"
+                "  * Clear paragraph breaks (use double newlines \\n\\n between paragraphs and bullet blocks).\n"
+                "- NEVER output a single continuous solid wall of text.\n"
+                "- STILL strictly preserve factual accuracy and citations ([1], [2]), referencing official articles.\n"
             )
 
         prompt = (
@@ -1408,52 +1584,58 @@ class RAGEngine:
             f"   'used_ranks': list of integers (e.g. [1])\n"
         )
 
-        config = types.GenerateContentConfig(
+        response = call_llm(
+            provider=provider,
+            prompt=prompt,
+            model=model,
+            api_key=key,
+            base_url=base_url,
             temperature=options.temperature,
-            response_mime_type="application/json",
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
+            max_tokens=2048,
+            seed=options.seed,
+            json_mode=True,
         )
-        if options.seed is not None:
-            config.seed = options.seed
-
-        candidate_models = [self.llm_model]
-        if self.llm_model != "gemini-3.5-flash":
-            candidate_models.append("gemini-3.5-flash")
-
-        response = None
-        for mdl in candidate_models:
-            try:
-                response = client.models.generate_content(
-                    model=mdl,
-                    contents=prompt,
-                    config=config,
-                )
-                if response and response.text:
-                    break
-            except Exception as ex:
-                logger.warning("Gemini call attempt with model %s failed: %s", mdl, str(ex))
-                continue
 
         if not response or not response.text:
             return None
 
-        text = response.text
-
-        data = json.loads(text)
+        data = extract_json_from_llm_response(response.text)
         is_no_ans = bool(data.get("no_answer", False))
         ans_text = data.get("answer", "")
-        conf = float(data.get("confidence", 0.85))
+        conf_raw = data.get("confidence")
+        try:
+            conf = float(conf_raw) if conf_raw is not None else 0.85
+        except (ValueError, TypeError):
+            conf = 0.85
+
         raw_used_ranks = data.get("used_ranks", [1])
+        if isinstance(raw_used_ranks, (int, str)):
+            if isinstance(raw_used_ranks, str) and raw_used_ranks.isdigit():
+                raw_used_ranks = [int(raw_used_ranks)]
+            elif isinstance(raw_used_ranks, int):
+                raw_used_ranks = [raw_used_ranks]
+            else:
+                raw_used_ranks = [1]
+        elif not isinstance(raw_used_ranks, (list, tuple)):
+            raw_used_ranks = [1]
+
         # Deduplicate ranks maintaining order
         used_ranks = []
         for rk in raw_used_ranks:
-            if isinstance(rk, int) and rk not in used_ranks and 1 <= rk <= len(contexts):
-                used_ranks.append(rk)
+            try:
+                rk_int = int(rk)
+                if rk_int not in used_ranks and 1 <= rk_int <= len(contexts):
+                    used_ranks.append(rk_int)
+            except (ValueError, TypeError):
+                continue
         if not used_ranks and contexts:
             used_ranks = [1]
 
         if is_no_ans:
-            return self._build_no_answer_result(item_id, target_lang, contexts)
+            res = self._build_no_answer_result(item_id, target_lang, contexts)
+            res.llm_provider = provider
+            res.llm_model = model
+            return res
 
         citations: List[Citation] = []
         for seq_ref, rk in enumerate(used_ranks, 1):
@@ -1484,12 +1666,15 @@ class RAGEngine:
 
         # Гарантия наличия хотя бы одной цитаты при status=ok
         if not citations and contexts:
-            return self._generate_grounded_answer(
+            fallback_res = self._generate_grounded_answer(
                 item_id, question, target_lang, contexts, reranked_results, options
             )
+            fallback_res.llm_provider = provider
+            fallback_res.llm_model = model
+            return fallback_res
 
-        in_tokens = int(len(combined_context) / 4)
-        out_tokens = int(len(ans_text) / 4)
+        in_tokens = response.input_tokens if response.input_tokens is not None else int(len(combined_context) / 4)
+        out_tokens = response.output_tokens if response.output_tokens is not None else int(len(ans_text) / 4)
 
         return ItemResult(
             id=item_id,
@@ -1502,4 +1687,9 @@ class RAGEngine:
             contexts=contexts,
             usage=ItemUsage(input_tokens=in_tokens, output_tokens=out_tokens),
             error=None,
+            llm_provider=provider,
+            llm_model=model,
         )
+
+    # Алиас для обратной совместимости
+    _call_gemini = _call_llm
