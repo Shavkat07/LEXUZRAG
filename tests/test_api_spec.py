@@ -78,8 +78,8 @@ def test_health_endpoint(setup_test_environment):
     assert "timestamp" in data
 
 
-def test_authentication(setup_test_environment):
-    """Проверка требований авторизации: 401 при отсутствии или неверном ключе."""
+def test_authentication(setup_test_environment, monkeypatch):
+    """Проверка требований авторизации: открытый режим по умолчанию и 401 при LEXUZ_ENFORCE_AUTH=1."""
     client = setup_test_environment
     payload = {
         "run_id": "eval-2026-11-03",
@@ -89,22 +89,36 @@ def test_authentication(setup_test_environment):
         "items": [{"id": "q001", "question": "Savol matni"}],
     }
 
-    # Без заголовка Authorization
-    res_no_auth = client.post("/v1/rag/batch", json=payload)
-    assert res_no_auth.status_code == 401
+    # 1. По умолчанию открытый доступ (без 401)
+    res_open = client.post("/v1/rag/batch", json=payload)
+    assert res_open.status_code == 200
 
-    # С недействительным токеном
-    res_bad_auth = client.post(
+    # С любым токеном - тоже 200 в открытом режиме
+    res_any = client.post(
         "/v1/rag/batch",
         json=payload,
+        headers={"Authorization": "Bearer any-token"},
+    )
+    assert res_any.status_code == 200
+
+    # 2. При явном включении LEXUZ_ENFORCE_AUTH=1 проверяется 401
+    monkeypatch.setenv("LEXUZ_ENFORCE_AUTH", "1")
+    res_no_auth = client.post(
+        "/v1/rag/batch",
+        json={**payload, "batch_id": "eval-auth-strict-1"},
+    )
+    assert res_no_auth.status_code == 401
+
+    res_bad_auth = client.post(
+        "/v1/rag/batch",
+        json={**payload, "batch_id": "eval-auth-strict-2"},
         headers={"Authorization": "Bearer wrong-key"},
     )
     assert res_bad_auth.status_code == 401
 
-    # С корректным токеном
     res_ok_auth = client.post(
         "/v1/rag/batch",
-        json=payload,
+        json={**payload, "batch_id": "eval-auth-strict-3"},
         headers=AUTH_HEADER,
     )
     assert res_ok_auth.status_code == 200

@@ -185,7 +185,7 @@ def process_batch(
     background_tasks: BackgroundTasks,
     mode: Optional[str] = Query(None, description="Режим выполнения: 'sync' или 'async'"),
     async_mode: Optional[bool] = Query(None, alias="async", description="Флаг асинхронного режима"),
-    api_key: str = Depends(verify_api_key),
+    api_key: Optional[str] = Depends(verify_api_key),
     _: None = Depends(check_rate_limit),
 ) -> Any:
     """POST /v1/rag/batch - Пакетная обработка 1-10 вопросов."""
@@ -304,7 +304,7 @@ def process_batch(
 )
 def get_batch_by_id(
     batch_id: str,
-    api_key: str = Depends(verify_api_key),
+    api_key: Optional[str] = Depends(verify_api_key),
 ) -> Any:
     """GET /v1/rag/batch/{batch_id} - Получение сохраненного результата или статуса батча."""
     store = get_store()
@@ -338,7 +338,7 @@ def get_batch_by_id(
 @router.post("/v1/rag/query", response_model=QueryResponse, tags=["RAG"])
 def query_single(
     req: QueryRequest,
-    api_key: str = Depends(verify_api_key),
+    api_key: Optional[str] = Depends(verify_api_key),
     _: None = Depends(check_rate_limit),
 ) -> QueryResponse:
     """POST /v1/rag/query - Отладочный одиночный запрос."""
