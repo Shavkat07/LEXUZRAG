@@ -15,6 +15,7 @@ import inspect
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import time
 from datetime import datetime, timezone
@@ -326,6 +327,63 @@ class RAGEngine:
         self.llm_model = raw_llm
         self.embedding_model = embedding_model
         self.reranker_model = reranker_model
+        self._master_registry_cache: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def get_document_metadata(self, doc_id: str) -> Dict[str, Any]:
+        """Извлекает обогащенные метаданные акта (номер, дата, чистое название) из master_registry.json."""
+        if self._master_registry_cache is None:
+            self._master_registry_cache = {}
+            reg_path = Path("data/master_registry.json")
+            if reg_path.exists():
+                try:
+                    with open(reg_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    docs = data.get("documents", [])
+                    for d in docs:
+                        did = str(d.get("doc_id", "")).lstrip("-").strip()
+                        if did:
+                            self._master_registry_cache[did] = d
+                except Exception as e:
+                    logger.warning("Could not load master_registry.json for metadata enrichment: %s", e)
+        clean_id = str(doc_id).replace("lex:", "").lstrip("-").strip()
+        return self._master_registry_cache.get(clean_id, {})
+
+    @staticmethod
+    def extract_doc_number(doc_title: str) -> Optional[str]:
+        """Извлекает официальный номер нормативного акта из заголовка."""
+        if not doc_title:
+            return None
+        m = re.search(
+            r"\b(O[‘'ʼ`]RQ-\d+(?:-[IVXLCDM]+)?|ЗРУ-\d+|ЎРҚ-\d+|PF-\d+|ПФ-\d+|PQ-\d+|ПП-\d+|VMQ-\d+|\d+-(?:II|I|XII|son))\b",
+            doc_title,
+            re.IGNORECASE,
+        )
+        if m:
+            return m.group(1).replace("`", "'").replace("‘", "'").replace("’", "'")
+        return None
+
+    def is_doc_repealed(self, sr: Any, reg_meta: Dict[str, Any]) -> bool:
+        """Проверяет, утратил ли документ юридическую силу (kuchini yo'qotgan)."""
+        title = (reg_meta.get("title") or getattr(sr, "doc_title", "") or "").lower()
+        content = getattr(sr, "content", "").lower()
+        doc_id = str(getattr(sr, "doc_id", "")).lstrip("-").strip()
+
+        # Известные устаревшие акты
+        if doc_id in ("142859", "124850"):  # Mehnat kodeksi 1995
+            return True
+        repealed_markers = [
+            "kuchini yo'qotgan",
+            "kuchini yo‘qotgan",
+            "утратил силу",
+            "o'z kuchini yo'qotgan deb topilsin",
+            "hujjat kuchini yo'qotgan",
+            "hujjat kuchini yo‘qotgan",
+        ]
+        if any(m in title for m in repealed_markers):
+            return True
+        if "hujjat kuchini yo'qotgan" in content or "hujjat kuchini yo‘qotgan" in content:
+            return True
+        return False
 
     def get_key_for_provider(self, provider: str) -> Optional[str]:
         p = normalize_provider(provider)
@@ -956,6 +1014,22 @@ class RAGEngine:
         if any(term in q_lower for term in ["javobsiz", "javobi yo'q", "kosmik", "unanswerable", "no_answer"]):
             return q_clean
 
+        # Юридическое раскрытие омонимов и многозначных терминов (Legal Disambiguation)
+        q_lat_check = cyr_to_lat(q_lower)
+        if "lokalizatsiya" in q_lat_check or "локализаци" in q_lat_check:
+            return "O'zbekiston fuqarolarining shaxsga doir ma'lumotlarini O'zbekiston hududidagi serverlarda saqlash lokalizatsiya talabi"
+        if "ierarxiya" in q_lat_check or "иерархи" in q_lat_check or ("hujjatlar" in q_lat_check and any(w in q_lat_check for w in ["yuqoridan", "pastga", "kuchi", "nisbati"])):
+            return "Normativ-huquqiy hujjatlar to'g'risidagi qonun normativ-huquqiy hujjatlar ierarxiyasi yuridik kuchi"
+        if "qoraqalpog" in q_lat_check and any(w in q_lat_check for w in ["maqom", "status"]):
+            return "Qoraqalpog'iston Respublikasining maqomi O'zbekiston Respublikasi tarkibidagi suveren respublika Konstitutsiya"
+        if "1995" in q_lat_check and "mehnat kodeks" in q_lat_check:
+            return "1995-yilgi Mehnat kodeksi kuchini yo'qotgan yangi Mehnat kodeksi O'RQ-798"
+        if ("dxsh" in q_lat_check or "davlat-xususiy" in q_lat_check) and ("davlat nima" in q_lat_check or "beradi" in q_lat_check or "sherik" in q_lat_check):
+            return "Davlat-xususiy sheriklik to'g'risida qonun davlat sherigining majburiyatlari va kafolatlari"
+        if "bhm" in q_lat_check or "bazaviy hisoblash" in q_lat_check:
+            if any(w in q_lat_check for w in ["qancha", "miqdor", "necha", "nima", "qoidasi"]):
+                return "Bazaviy hisoblash miqdori BHM joriy miqdori so'm"
+
         # Если запрос уже формальный или не содержит разговорных маркеров
         if not self.is_colloquial_or_informal(q_clean, lang):
             if is_cyrillic(q_clean) and lang != "ru":
@@ -1017,6 +1091,18 @@ class RAGEngine:
                 clean_doc = sr.doc_id.lstrip("-")
                 canonical_doc_id = f"lex:{clean_doc}"
                 art_label = self.format_article_label(sr.unit_type, sr.unit_number)
+
+                # Обогащение метаданными из master_registry.json
+                reg_meta = self.get_document_metadata(clean_doc)
+                clean_title = self.clean_doc_title(sr.doc_title) or reg_meta.get("title")
+                doc_num = (
+                    sr.doc_number
+                    or self.extract_doc_number(sr.doc_title)
+                    or reg_meta.get("doc_number")
+                )
+                adopt_date = self.extract_edition_date(sr.doc_title) or reg_meta.get("adoption_date")
+                doc_stat = "kuchini yo'qotgan" if self.is_doc_repealed(sr, reg_meta) else "amalda"
+
                 contexts.append(
                     ContextItem(
                         rank=r.rank,
@@ -1027,6 +1113,10 @@ class RAGEngine:
                         retrieval_score=round(float(sr.score), 4),
                         rerank_score=round(float(r.rerank_score), 4),
                         used_in_answer=False,
+                        doc_title=clean_title,
+                        doc_number=doc_num,
+                        adoption_date=adopt_date,
+                        doc_status=doc_stat,
                     )
                 )
 
@@ -1241,13 +1331,13 @@ class RAGEngine:
         citation1 = Citation(
             ref=1,
             doc_id=doc_id_canonical,
-            doc_title=clean_title,
+            doc_title=getattr(best_ctx, "doc_title", None) or clean_title,
             doc_type=doc_type,
             url=url_canonical,
             article=art_label,
             part="1-qism",
-            edition_date=edition_date,
-            doc_status="amalda",
+            edition_date=getattr(best_ctx, "adoption_date", None) or edition_date,
+            doc_status=getattr(best_ctx, "doc_status", None) or "amalda",
             chunk_id=best_ctx.chunk_id,  # СТРОГО совпадает с contexts[best_rank_idx].chunk_id
             quote=quote,
         )
@@ -1463,13 +1553,13 @@ class RAGEngine:
                 citation2 = Citation(
                     ref=2,
                     doc_id=f"lex:{clean_doc2}",
-                    doc_title=clean_title2,
-                    doc_type=self.classify_doc_type(sr2.doc_title),
+                    doc_title=getattr(ctx2, "doc_title", None) or clean_title2,
+                    doc_type=self.classify_doc_type(getattr(ctx2, "doc_title", None) or sr2.doc_title),
                     url=f"https://lex.uz/docs/{clean_doc2}",
                     article=art_label2,
                     part="1-qism",
-                    edition_date=edition_date,
-                    doc_status="amalda",
+                    edition_date=getattr(ctx2, "adoption_date", None) or edition_date,
+                    doc_status=getattr(ctx2, "doc_status", None) or "amalda",
                     chunk_id=ctx2.chunk_id,
                     quote=quote2,
                 )
@@ -1531,8 +1621,19 @@ class RAGEngine:
 
         context_prompt_parts = []
         for i, c in enumerate(contexts, 1):
+            meta_parts = []
+            if getattr(c, "doc_title", None):
+                meta_parts.append(f"Hujjat: «{c.doc_title}»")
+            if getattr(c, "doc_number", None):
+                meta_parts.append(f"Raqami: {c.doc_number}")
+            if getattr(c, "adoption_date", None):
+                meta_parts.append(f"Qabul sanasi: {c.adoption_date}")
+            if getattr(c, "doc_status", None):
+                meta_parts.append(f"Yuridik holati: {c.doc_status}")
+
+            meta_header = " | ".join(meta_parts) if meta_parts else f"Hujjat: {c.doc_id} | {c.chunk_id}"
             context_prompt_parts.append(
-                f"[{i}] {c.doc_id} | {c.article} | {c.chunk_id}\n{c.text}\n"
+                f"[{i}] {meta_header} | {c.article} ({c.doc_id})\nMatn:\n{c.text}\n"
             )
         combined_context = "\n---\n".join(context_prompt_parts)
 
@@ -1582,6 +1683,15 @@ class RAGEngine:
             f"   'no_answer': boolean,\n"
             f"   'confidence': float,\n"
             f"   'used_ranks': list of integers (e.g. [1])\n"
+            f"5. KEY STATUTORY FACTS (MUHIM REKVIZITLAR):\n"
+            f"   When answering about a law, code, decree, strategy, or resolution (or its dates/numbers), ALWAYS explicitly state:\n"
+            f"   - Official title (e.g., «Normativ-huquqiy hujjatlar to'g'risida»gi Qonun)\n"
+            f"   - Official number (e.g., O'RQ-682, PF-158, PQ-4996, 439-II)\n"
+            f"   - Official adoption date (e.g., 2021-yil 20-aprel) from the context metadata header.\n"
+            f"6. LEGAL HIERARCHY & REPEALED NORMS:\n"
+            f"   - The Constitution of the Republic of Uzbekistan has supreme legal force over all other acts.\n"
+            f"   - If a document is repealed (kuchini yo'qotgan) or replaced by a newer law (e.g. 1995 Labor Code replaced by the 2022/2023 Labor Code O'RQ-798), explicitly state that it is NO LONGER IN FORCE (amalda emas / o'z kuchini yo'qotgan).\n"
+            f"   - Never present a repealed norm as currently active.\n"
         )
 
         response = call_llm(
@@ -1652,13 +1762,13 @@ class RAGEngine:
                     Citation(
                         ref=seq_ref,
                         doc_id=ctx.doc_id,
-                        doc_title=clean_title,
-                        doc_type=self.classify_doc_type(sr.doc_title),
+                        doc_title=getattr(ctx, "doc_title", None) or clean_title,
+                        doc_type=self.classify_doc_type(getattr(ctx, "doc_title", None) or sr.doc_title),
                         url=f"https://lex.uz/docs/{clean_doc}",
                         article=ctx.article,
                         part="1-qism",
-                        edition_date=edition_date,
-                        doc_status="amalda",
+                        edition_date=getattr(ctx, "adoption_date", None) or edition_date,
+                        doc_status=getattr(ctx, "doc_status", None) or "amalda",
                         chunk_id=ctx.chunk_id,  # Гарантированно в contexts!
                         quote=quote,
                     )

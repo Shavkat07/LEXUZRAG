@@ -169,6 +169,10 @@ class ContextItem(BaseModel):
     retrieval_score: float = Field(..., description="Оценка первого этапа (Dense+Sparse RRF)")
     rerank_score: float = Field(..., description="Оценка кросс-энкодер реранкера")
     used_in_answer: bool = Field(default=True, description="Использован ли данный фрагмент в итоговом ответе")
+    doc_title: Optional[str] = Field(default=None, description="Официальное название акта")
+    doc_number: Optional[str] = Field(default=None, description="Номер нормативного акта (O'RQ-XXX, PF-XXX)")
+    adoption_date: Optional[str] = Field(default=None, description="Дата принятия (YYYY-MM-DD или DD.MM.YYYY)")
+    doc_status: Optional[str] = Field(default=None, description="Юридический статус действия (amalda / kuchini yo'qotgan)")
 
 
 class ItemTiming(BaseModel):

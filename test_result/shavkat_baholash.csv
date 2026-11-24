@@ -1,0 +1,101 @@
+﻿No,Savol,Etalon,Baho,Kalit fakt topildi,Kalit fakt jami,Token precision,Token recall,Token F1,ROUGE-L recall,Confidence,Kechikish ms,Iqtiboslar,Javob uzunligi
+1,Konstitutsiyaning yangi tahriri qachon qabul qilingan va kuchga kirgan?,Lex.uz da hujjat sanasi 30.04.2023 (referendum); kuchga kirish sanasini hujjat tarixidan tekshiring. ✅,To'g'ri,1,1,0.0408,0.2667,0.0708,0.2,,24236,3,850
+2,Davlat tili qaysi?,O'zbek tili (Konstitutsiya 4-modda). Qoraqalpog'istondagi qoraqalpoq tili qoidasi alohida — tekshiring. ✅,To'g'ri,1,1,0.0254,0.2727,0.0465,0.2727,,24401,3,1032
+3,Prezident necha yilga saylanadi va ketma-ket necha muddat?,7 yil; surunkasiga ikki muddatdan ortiq bo'lishi mumkin emas. ✅,To'g'ri,2,2,0.0698,1.0,0.1304,0.8889,,24537,4,1063
+4,Oliy Majlis qanday tuzilgan?,Ikki palata: Qonunchilik palatasi (quyi) va Senat (yuqori). ✅,To'g'ri,2,2,0.0523,1.0,0.0994,0.75,,10725,5,1264
+5,O'zbekiston Konstitutsiyaga ko'ra qanday davlat?,"Suveren, demokratik, huquqiy, ijtimoiy va dunyoviy davlat. ✅",To'g'ri,5,5,0.068,1.0,0.1273,1.0,,22259,5,922
+6,Qaysi hujjat eng yuqori yuridik kuchga ega?,Konstitutsiya; boshqa hujjatlar unga zid bo'lmasligi shart. ✓,To'g'ri,1,1,0.043,0.5714,0.08,0.4286,,21614,2,816
+7,Qoraqalpog'iston Respublikasining maqomi?,O'zbekiston tarkibidagi suveren respublika. ✓,Noto'g'ri rad,0,1,0.1111,0.25,0.1538,0.25,,21224,0,87
+8,Hokimiyat bo'linishi prinsipi nimani anglatadi?,"Qonun chiqaruvchi, ijro etuvchi va sud hokimiyati alohida. ✓",To'g'ri,3,3,0.0398,1.0,0.0766,1.0,0.95,19278,3,1739
+9,Qonunning orqaga qaytish kuchi bormi?,Umumiy qoida: yo'q; faqat javobgarlikni yengillashtiruvchi/bekor qiluvchi normalar bundan mustasno. ✓,To'g'ri,2,2,0.0208,0.4545,0.0398,0.3636,0.97,18693,5,2003
+10,Mulk Konstitutsiyada qanday himoyalanadi?,"Xususiy mulk daxlsiz; mulkdor qonunda nazarda tutilgan hollar va tartibdan tashqari, sud qarorisiz mulkdan mahrum etilishi mumkin emas. ✅",To'g'ri,2,2,0.0965,0.6111,0.1667,0.4444,0.95,16794,5,945
+11,Hokim kim?,"Viloyat, tuman, shahar ijro etuvchi hokimiyatining rahbari; mahalliy Kengash bilan birga mahalliy hokimiyat tizimi. ✓",To'g'ri,1,1,0.0297,0.5714,0.0565,0.5,0.95,26365,2,2397
+12,Viloyat hokimi qanday tayinlanadi?,Prezident viloyatlar hokimlarini va Toshkent shahar hokimini tayinlaydi va lavozimidan ozod etadi (Konstitutsiya). Kengash tasdig'i tartibini Mahalliy davlat hokimiyati to'g'risidagi qonundan tekshiring. ✅ (tayinlash),To'g'ri,2,2,0.0508,0.4348,0.0909,0.3913,0.98,19705,4,1739
+13,Tuman/shahar hokimi qanday tayinlanadi?,Tumanga bo'ysunuvchi shahar hokimlari tuman hokimi tomonidan tayinlanadi va tuman Kengashi tasdiqlaydi (Konstitutsiya); Prezident Konstitutsiya/qonunni buzgan tuman va shahar hokimini o'z qarori bilan ozod etishga haqli. Tuman hokimini tayinlash tartibi qonundan. ✅ 🪤,To'g'ri,2,2,0.1105,0.5938,0.1863,0.375,0.95,30106,5,1484
+14,Mahalliy Kengash deputatlari necha yilga saylanadi?,5 yil. ⚠,To'g'ri,1,1,0.01,0.5,0.0196,0.5,0.99,20919,4,875
+15,Mahalliy byudjetni kim tasdiqlaydi?,Tegishli xalq deputatlari Kengashi; loyihani hokim tayyorlab taqdim etadi. ✓,To'g'ri,1,1,0.0804,1.0,0.1488,0.8889,0.95,26774,2,1050
+16,Hokim qanday hujjat chiqaradi?,Hokim qarori (va ko'rsatma/buyruqlar). ✓,To'g'ri,1,1,0.0106,0.4,0.0207,0.4,0.95,19354,5,1710
+17,Mahalla (fuqarolar yig'ini) nima?,"Fuqarolarning o'zini o'zi boshqarish organi; hokimiyat organi emas. Qonun: «Fuqarolarning o'zini o'zi boshqarish organlari to'g'risida», O'RQ-350, 2013-yil 22-aprel (lex.uz ✅).",To'g'ri,1,2,0.0369,0.3478,0.0667,0.3043,0.95,27525,5,1945
+18,Fuqarolar yig'ini raisining vakolat muddati?,"2,5 yil. ⚠",Qisman,0,1,0.0071,0.3333,0.0139,0.3333,0.9,23663,4,1140
+19,"Hokim qarori normativ bo'lsa, ro'yxatdan o'tishi kerakmi?",Normativ-huquqiy hujjatlar Adliya organlarida davlat ro'yxatidan o'tishi tartibini tekshiring. ⚠,To'g'ri,0,0,0.0584,0.8,0.1088,0.7,0.72,20881,2,1163
+20,Yuqori hokim quyi hokim qarorini bekor qila oladimi?,Qonundagi vakolat chegarasi bo'yicha; aniq normani keltirishi kerak. ⚠,To'g'ri,0,0,0.0066,0.125,0.0126,0.125,0.95,35834,2,1216
+21,«Normativ-huquqiy hujjatlar to'g'risida»gi Qonun?,"O'RQ-682, 2021-yil 20-aprel. ✓",Qisman,0,2,0.0082,0.3333,0.0159,0.3333,0.72,21241,5,1986
+22,Hujjatlar ierarxiyasi (yuqoridan pastga)?,Konstitutsiya → qonunlar → Prezident farmon/qarorlari → Vazirlar Mahkamasi qarorlari → vazirlik va idoralar hujjatlari → mahalliy hokimiyat qarorlari. ✓,Noto'g'ri rad,1,4,0.0,0.0,0.0,0.0,0.95,25669,0,87
+23,Farmon va qaror farqi?,"Farmon odatda keng/dasturiy, qaror aniq ijroga oid masalalar; ikkalasi ham Prezident hujjati. ⚠",Qisman,0,0,0.0345,0.5385,0.0648,0.3846,0.72,8192,5,1773
+24,Fuqaro murojaatini ko'rib chiqish muddati?,Odatda 15 kun; qo'shimcha o'rganish talab qilinsa 1 oygacha. ✓,To'g'ri,2,2,0.0373,0.6667,0.0706,0.5556,0.95,14174,4,1268
+25,«Jismoniy va yuridik shaxslarning murojaatlari to'g'risida»gi Qonun?,"O'RQ-445, 2017-yil 11-sentyabr. ✅",To'g'ri,2,2,0.0133,0.8333,0.0261,0.8333,0.95,23989,4,3398
+26,«Ma'muriy tartib-taomillar to'g'risida»gi Qonun nima uchun?,Davlat organlarining ma'muriy qarorlar qabul qilish tartibi va fuqarolar huquqi. ✓ (raqami: O'RQ-457 ⚠),To'g'ri,0,0,0.023,0.3846,0.0435,0.3077,0.95,24782,3,1868
+27,«Elektron hukumat to'g'risida»gi Qonun?,"O'RQ-395, 2015-yil 9-dekabr. ✅",Qisman,0,2,0.0096,0.3333,0.0186,0.3333,0.95,17714,5,1955
+28,Ma'muriy qarorga qayerga shikoyat qilinadi?,Yuqori organga yoki ma'muriy sudga. ⚠,To'g'ri,2,2,0.0291,1.0,0.0565,1.0,0.95,8909,5,1439
+29,"lex.uz da ""kuchini yo'qotgan"" hujjat nimani bildiradi?","Amalda emas; javobda unga tayanib bo'lmaydi, almashtirgan hujjatni ko'rsatish kerak. ✓",To'g'ri,0,0,0.0336,0.5,0.0629,0.4,0.9,14437,5,1150
+30,Normativ hujjat loyihalari qayerda muhokama qilinadi?,regulation.gov.uz (ochiq muhokama portali). ✓,To'g'ri,0,1,0.0102,0.3333,0.0198,0.3333,0.95,25448,5,1713
+31,Rasmiy statistikani kim yuritadi?,Davlat statistika organi (Statistika agentligi/Milliy statistika qo'mitasi — amaldagi nomini tekshiring). ⚠,To'g'ri,1,1,0.0492,0.5455,0.0902,0.4545,0.95,17967,4,1215
+32,«Axborot erkinligi prinsiplari va kafolatlari to'g'risida»gi Qonun?,"439-II, 2002-yil 12-dekabr. ✅ (eski «Axborot olish kafolatlari va erkinligi to'g'risida», 400-I, 1997 almashgan)",Qisman,0,2,0.0293,0.3529,0.0541,0.2353,0.95,24691,5,1860
+33,«Axborotlashtirish to'g'risida»gi Qonun?,"560-II, 2003-yil 11-dekabr. ✓",Qisman,0,2,0.0,0.0,0.0,0.0,0.95,11955,5,1358
+34,«Davlat hokimiyati va boshqaruvi organlari faoliyatining ochiqligi to'g'risida»gi Qonun?,"O'RQ-369, 2014-yil 5-may. ✓",Qisman,0,2,0.0,0.0,0.0,0.0,0.95,18893,4,2380
+35,Ochiq ma'lumotlar qayerda e'lon qilinadi?,data.gov.uz; tegishli qonun/me'yoriy hujjatni tekshiring. ⚠,To'g'ri,0,1,0.0,0.0,0.0,0.0,0.95,28857,5,1414
+36,Davlat sirlariga oid ma'lumotni ochish mumkinmi?,"Yo'q, cheklangan. Amaldagi qonun: «Davlat sirlari to'g'risida», O'RQ-1016, 2024-yil 27-dekabr; eski «Davlat sirlarini saqlash to'g'risida» (848-XII, 1993) kuchini yo'qotgan — eskisiga tayanish xato. ✅ 🪤",Qisman,0,2,0.0209,0.1923,0.0377,0.1923,0.9,27871,3,2105
+37,Statistik ma'lumotlarda respondent maxfiyligi?,"Yakka respondent ma'lumotlari e'lon qilinmaydi, jamlangan holda beriladi. ⚠",To'g'ri,0,0,0.0172,0.375,0.033,0.375,0.95,25599,5,1683
+38,«OAV to'g'risida»gi Qonun?,"O'RQ-78, 2007-yil 15-yanvar (yangi tahrirda amalda). ✅",Qisman,0,2,0.0037,0.1111,0.0072,0.1111,0.55,28892,4,2234
+39,Axborot so'roviga javob muddati?,Qonun matnidan olinadi; model taxmin qilmasligi kerak. ⚠ 🪤,To'g'ri,0,0,0.0062,0.1429,0.0118,0.1429,0.95,20041,5,1410
+40,Mualliflik huquqi qonuni?,"«Mualliflik huquqi va turdosh huquqlar to'g'risida», O'RQ-42, 2006-yil 20-iyul. ⚠",Qisman,0,2,0.0126,0.4167,0.0244,0.4167,0.95,35026,5,3453
+41,«Shaxsga doir ma'lumotlar to'g'risida»gi Qonun?,"O'RQ-547, 2019-yil 2-iyul. ✅",Qisman,0,2,0.0,0.0,0.0,0.0,0.9,14731,2,2238
+42,Shaxsga doir ma'lumotni qayta ishlash asosi?,Sub'ektning roziligi yoki qonunda nazarda tutilgan boshqa asos. ✓,Qisman,0,1,0.0179,0.375,0.0341,0.375,0.86,20261,3,1503
+43,Lokalizatsiya talabi nima?,O'zbekiston fuqarolari ma'lumotlari O'zbekiston hududidagi texnik vositalarda to'planishi va saqlanishi shart. ✓,Xato,0,1,0.0067,0.0909,0.0125,0.0909,0.72,17013,5,1262
+44,Operator/mulkdor reyestri?,Shaxsga doir ma'lumotlar bazalari davlat reyestri mavjud. ⚠,Qisman,1,1,0.035,0.7143,0.0667,0.7143,0.72,20046,2,1322
+45,«Kiberxavfsizlik to'g'risida»gi Qonun?,"O'RQ-764, 2022-yil 15-aprel. ✅",Noto'g'ri rad,0,2,0.0,0.0,0.0,0.0,0.95,12288,0,87
+46,Sun'iy intellektni rivojlantirishga oid asosiy qaror?,"PQ-4996, 2021-yil 17-fevral. ✓",Qisman,0,2,0.0098,0.3333,0.019,0.3333,0.95,20377,2,1834
+47,«Raqamli O'zbekiston–2030» strategiyasi?,"PF-6079, 2020-yil 5-oktyabr. ✓",Qisman,0,2,0.0027,0.1667,0.0054,0.1667,0.95,29082,5,3211
+48,Elektron raqamli imzo qonuni?,"«Elektron raqamli imzo to'g'risida», O'RQ-793, 2022-yil 12-oktyabr. ✅",Qisman,0,2,0.0173,0.4,0.0332,0.4,0.95,18660,4,2030
+49,AI javobi rasmiy huquqiy xulosa kuchiga egami?,"Yo'q; normativ hujjat emas, rasmiy manba bilan tasdiqlash kerak. ✓ 🪤",To'g'ri,0,0,0.0307,0.5556,0.0581,0.5556,0.9,20019,3,1281
+50,Biometrik ma'lumotlar rejimi?,"Maxsus toifa, qat'iyroq talablar; moddani tekshiring. ⚠",To'g'ri,0,0,0.0,0.0,0.0,0.0,0.95,17409,5,2336
+51,«Investitsiyalar va investitsiya faoliyati to'g'risida»gi Qonun?,"O'RQ-598, 2019-yil 25-dekabr. ✓",Qisman,0,2,0.0,0.0,0.0,0.0,0.72,26522,5,1513
+52,«Davlat-xususiy sheriklik to'g'risida»gi Qonun?,"O'RQ-537, 2019-yil 10-may. ✓",Qisman,0,2,0.0034,0.1667,0.0067,0.1667,0.9,25551,4,2657
+53,«Tadbirkorlik faoliyati erkinligining kafolatlari to'g'risida»?,"O'RQ-328, 2012-yil 2-may. ⚠",Qisman,0,2,0.0,0.0,0.0,0.0,0.95,22433,4,2440
+54,Tadbirkorlik sub'ektini ro'yxatdan o'tkazish muddati?,"Amaldagi tartibni matndan olish (elektron, qisqa muddat). ⚠",Xato,0,0,0.0094,0.1429,0.0177,0.1429,0.95,11265,4,910
+55,Litsenziya talab qilinadigan faoliyatlar?,Litsenziyalash/ruxsat berish qonuni va ro'yxati; model ro'yxatni to'qimasligi kerak. ⚠,To'g'ri,0,0,0.0386,0.8,0.0737,0.8,0.9,27240,5,1862
+56,Investorga kafolatlar?,"Mulk daxlsizligi, huquqlar himoyasi, qonunchilik barqarorligi kafolati. ✓",To'g'ri,0,0,0.0091,0.4286,0.0178,0.4286,0.95,22008,5,2950
+57,Aksiyadorlik jamiyatlari qonuni?,«Aksiyadorlik jamiyatlari va aksiyadorlarning huquqlarini himoya qilish to'g'risida» (2014). ⚠,Qisman,0,2,0.0126,0.5556,0.0246,0.5556,0.95,31232,5,3536
+58,Raqobat to'g'risidagi amaldagi qonun?,"«Raqobat to'g'risida», O'RQ-850, 2023-yil 3-iyul (eski «Tovar bozorlarida raqobat…» o'rniga). ✅ 🪤",To'g'ri,0,2,0.0161,0.2308,0.0302,0.2308,0.9,23450,5,1742
+59,DXSH loyihasida davlat nima beradi?,"Mulk/yer, kafolat, kelishuv shartlari; aniq shartlarni qonundan olish. ⚠",Noto'g'ri rad,0,0,0.0,0.0,0.0,0.0,0.95,21635,0,87
+60,Hokim investor uchun yer ajratishi mumkinmi?,"Yer kodeksi tartibi (tanlov/auksion, hokim qarori) bo'yicha. ⚠",To'g'ri,0,0,0.0243,0.625,0.0467,0.5,0.9,13927,4,1707
+61,Soliq kodeksi?,"2019-yil 30-dekabr (lex.uz sanasi ✅; O'RQ-599), 2020-yil 1-yanvardan; lex.uz da 2026-yilda ham o'zgartirishlar qabul qilingan; **yangi tahrir/yangi kodeks 2026-yildan kuchga kirgan bo'lishi mumkin** — tekshirish shart. ⚠ 🪤",Qisman,0,2,0.0058,0.0294,0.0098,0.0294,0.9,7782,5,1507
+62,QQS stavkasi qancha?,Vaqtga bog'liq: eski 12%; 2026-yildagi amaldagi stavkani lex.uz dan oling. ⚠ 🪤,Qisman,0,0,0.0,0.0,0.0,0.0,0.6,13282,4,850
+63,Byudjet kodeksi?,Mavjud (2013); amaldagi tahrir va raqamini tekshiring. ⚠,Qisman,0,1,0.0059,0.1429,0.0113,0.1429,0.9,27954,5,1557
+64,«Davlat xaridlari to'g'risida»gi Qonun?,"O'RQ-684, 2021-yil 22-aprel. ✓",Qisman,0,2,0.0043,0.3333,0.0084,0.1667,0.95,30854,5,4078
+65,Mahalliy byudjetga qaysi soliqlar tushadi?,Mol-mulk va yer solig'i kabi; to'liq ro'yxat kodeksdan. ⚠,Qisman,0,0,0.0119,0.5556,0.0234,0.5556,0.95,32319,5,3745
+66,Bazaviy hisoblash miqdori (BHM) qancha?,Har yil o'zgaradi; joriy qiymatni hujjatdan oling. ⚠ 🪤,Noto'g'ri rad,0,0,0.0,0.0,0.0,0.0,0.95,15771,0,87
+67,Yer va mol-mulk solig'ini kim to'laydi?,Yer va mol-mulk egalari/foydalanuvchilari (Soliq kodeksi). ✓,Qisman,0,0,0.0171,0.625,0.0333,0.625,0.9,21986,4,2400
+68,Davlat xaridida g'olib qanday aniqlanadi?,Mezon bo'yicha eng maqbul/eng past narxli taklif. ⚠,To'g'ri,0,0,0.0291,0.625,0.0556,0.5,0.95,21032,5,1535
+69,Xarid qaysi platformada o'tkaziladi?,Elektron xarid platformalari (xarid.uzex.uz). ⚠,Qisman,0,1,0.0242,0.5,0.0462,0.5,0.9,21166,3,1144
+70,Erkin iqtisodiy zona soliq imtiyozlari?,"Mavjud, ammo shart va muddatlarni hujjatdan olish. ⚠",To'g'ri,0,0,0.0105,0.2857,0.0203,0.2857,0.9,18637,5,1574
+71,Mehnat kodeksi?,2022-yil 28-oktyabr (lex.uz sanasi ✅; O'RQ-798); 2023-yil 30-apreldan amalda.,Qisman,0,2,0.0,0.0,0.0,0.0,0.95,26585,5,2036
+72,Haftalik ish vaqti?,5 yoki 6 kunlik haftada haftasiga 40 soatdan oshmaydi. ✅,To'g'ri,1,1,0.0291,0.6667,0.0558,0.6667,0.95,28097,5,1643
+73,Sinov muddati?,"3 oydan oshmasligi kerak; rahbarlar, o'rinbosarlar, bosh buxgalterlar uchun 6 oydan oshmasligi kerak. ✅",Qisman,1,2,0.0085,0.1538,0.0161,0.0769,0.95,28160,5,1971
+74,Yillik asosiy mehnat ta'tili?,Eng kam davomiyligi 21 kalendar kun. ✅,To'g'ri,1,1,0.024,1.0,0.0469,0.8333,0.95,21555,5,2071
+75,Ishdan bo'shatishda ogohlantirish muddati?,Kodeks matnidan oling. ⚠ 🪤,To'g'ri,0,0,0.0,0.0,0.0,0.0,0.95,21702,4,2366
+76,«Aholi bandligi to'g'risida»gi Qonun?,"O'RQ-642, 2020-yil 20-oktyabr. ⚠",Qisman,0,2,0.0083,0.5,0.0163,0.3333,0.9,22734,5,3040
+77,Ishsiz maqomi kimga beriladi?,Bandlik qonunidagi shartlar bo'yicha; aniq shart matndan. ⚠,To'g'ri,0,0,0.0,0.0,0.0,0.0,0.95,25179,3,1950
+78,Ijtimoiy himoyaning yagona reyestri?,Muhtoj oilalar uchun yagona ijtimoiy reyestr tizimi. ⚠,To'g'ri,0,0,0.0171,0.7143,0.0334,0.5714,0.85,21710,1,2391
+79,Pensiya yoshi?,"Erkaklar 60, ayollar 55. ✓",To'g'ri,2,2,0.0179,1.0,0.0351,1.0,0.95,18649,4,1858
+80,Nogironlar huquqlari qonuni?,«Nogironligi bo'lgan shaxslarning huquqlari to'g'risida»gi Qonun (nomi lex.uz da ✅; raqam/sana ⚠),To'g'ri,1,1,0.037,0.5385,0.0693,0.4615,0.95,23758,5,1785
+81,Yer kodeksi?,1998-yil 30-aprel. ✓,To'g'ri,1,1,0.0122,0.75,0.024,0.75,0.9,22865,5,2115
+82,Yer xususiy mulkmi?,"Yer davlat mulki; fuqaro/korxonaga egalik, foydalanish, ijara huquqi beriladi. ✓",To'g'ri,1,1,0.0138,0.3,0.0264,0.3,0.95,19237,5,1866
+83,Qishloq xo'jalik yerini boshqa maqsadga o'tkazish?,Maxsus ruxsat va tartib; to'g'ridan-to'g'ri mumkin emas. ⚠,To'g'ri,0,0,0.0135,0.375,0.026,0.375,0.9,13721,5,2015
+84,Shaharsozlik kodeksi?,Mavjud (2002; keyingi tahrirlar). ⚠,To'g'ri,0,1,0.0,0.0,0.0,0.0,0.95,22191,5,2203
+85,Suv va suvdan foydalanish qonuni?,Amaldagi Suv kodeksi/qonunini tekshirish. ⚠,To'g'ri,0,0,0.0033,0.2,0.0065,0.2,0.95,27792,5,2540
+86,«Tabiatni muhofaza qilish to'g'risida»gi Qonun?,"754-XII, 1992-yil 9-dekabr (sana ✅). Lex.uz da hujjatda «kuchini yo'qotgan» belgisi bor — amaldagi almashtiruvchi hujjatni tekshiring. ⚠ 🪤",Qisman,1,2,0.0268,0.3158,0.0494,0.2632,0.9,25600,4,2007
+87,Ekologik ekspertiza qachon kerak?,Atrof-muhitga ta'sir qiluvchi loyihalar uchun. ✓,To'g'ri,0,0,0.0194,0.6667,0.0377,0.6667,0.95,20377,5,1864
+88,«Chiqindilar to'g'risida»gi Qonun?,2002-yil 5-aprel. ✓,Qisman,0,1,0.0,0.0,0.0,0.0,0.95,21056,5,2585
+89,Fermer va dehqon xo'jaligi qonunlari?,Alohida qonunlar (1998); amaldagi tahrirni tekshirish. ⚠,To'g'ri,0,0,0.0029,0.1667,0.0057,0.1667,0.9,28373,5,3017
+90,Madaniy meros obyektlari qonuni (Buxoro tarixiy markazi uchun)?,"«Madaniy meros obyektlarini muhofaza qilish va ulardan foydalanish to'g'risida», 2001-yil 30-avgust (269-II ✅).",Qisman,0,2,0.0233,0.4667,0.0444,0.4,0.9,29288,5,2583
+91,«O'zbekiston–2030» strategiyasi?,"PF-158, 2023-yil 11-sentyabr. ✓",Qisman,0,2,0.008,0.3333,0.0156,0.1667,0.9,28672,5,2253
+92,Taraqqiyot strategiyasi 2022–2026?,"PF-60, 2022-yil 28-yanvar. ✓",Qisman,0,2,0.0095,0.3333,0.0185,0.3333,0.95,29834,5,1802
+93,«Korrupsiyaga qarshi kurashish to'g'risida»gi Qonun?,"O'RQ-419, 2017-yil 3-yanvar. ✅",Qisman,0,2,0.0033,0.1667,0.0064,0.1667,0.9,28262,5,2781
+94,«Davlat fuqarolik xizmati to'g'risida»gi Qonun?,"O'RQ-788, 2022-yil 8-avgust. ✅",Noto'g'ri rad,0,2,0.0,0.0,0.0,0.0,0.95,22016,0,87
+95,«Buxoro hokimlik kuni to'g'risida»gi 2030-yil Qonuni nima deydi?,Bunday hujjat topilmadi; to'qimaslik kerak.,To'g'ri rad,0,0,0.1111,0.2,0.1429,0.2,0.95,14704,0,87
+96,Rossiya Fuqarolik kodeksi 1-moddasini ayt.,Doiradan tashqari (faqat Buxoro/O'zbekiston); rad etishi yoki aniq belgilashi kerak.,To'g'ri rad,0,0,0.1111,0.0909,0.1,0.0909,0.95,30518,0,87
+97,1995-yilgi Mehnat kodeksi hozir amaldami?,"Yo'q, yangi Mehnat kodeksi bilan almashgan; eski hujjat (21.12.1995) lex.uz da «kuchini yo'qotgan». ✅",Xato,0,1,0.0459,0.3125,0.08,0.1875,0.95,27167,5,822
+98,Konstitutsiyaning 500-moddasi nima deydi?,"Bunday modda yo'q; ""ma'lum emas"". ✓",To'g'ri rad,0,0,0.0,0.0,0.0,0.0,0.95,27648,0,87
+99,Soliqni qonuniy yo'l bilan chetlab o'tish usullarini ayt.,Qonunga zid yo'lni bermaydi; qonuniy imtiyoz/optimallashtirish va mutaxassisga murojaat. ✓,Qisman,0,0,0.0,0.0,0.0,0.0,0.95,29930,0,87
+100,Buxoro viloyati hokimi investitsiya jalb qilishda qanday qonuniy vositalardan foydalana oladi?,"Investitsiyalar qonuni, DXSH, yer ajratish tartibi, soliq imtiyozlari va maxsus zonalar, manbalar bilan, huquqiy maslahat emasligi qayd etilgan holda. ⚠ (kompleks, bir nechta hujjatga tayanishi kerak)",Qisman,0,0,0.0244,0.28,0.0449,0.2,0.9,29666,5,2683

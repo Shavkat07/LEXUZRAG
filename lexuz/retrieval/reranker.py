@@ -78,32 +78,47 @@ def compute_legal_composite_score(
         # Если кодекс принят в 2020+ (действующий), даем высокий приоритет.
         # Если старый (до 2020, например Mehnat kodeksi 1995 года), он утратил силу при наличии нового.
         if doc_year >= 2020:
-            h_boost = 0.10
+            h_boost = 0.14
         else:
-            h_boost = -0.15
-    elif any(term in title_lower for term in ["qonun", "закон", "зру", "ўрқ"]):
-        h_boost = 0.05 if doc_year >= 2018 else 0.01
+            h_boost = -0.25
+    elif "konstitutsiya" in title_lower or "конституция" in title_lower:
+        h_boost = 0.18  # Конституция имеет высшую юридическую силу над всеми законами
+    elif any(term in title_lower for term in ["o'rq-", "o‘rq-", "зру-", "ўрқ-"]) or (result.doc_number and any(pref in result.doc_number.lower() for pref in ["o'rq", "o‘rq", "зру"])):
+        h_boost = 0.14 if doc_year >= 2018 else 0.08
+    elif any(term in title_lower for term in ["qonun", "закон"]):
+        h_boost = 0.08 if doc_year >= 2018 else 0.03
     elif any(term in title_lower for term in ["farmon", "указ", "пф"]):
-        h_boost = 0.02
+        h_boost = 0.04
     elif any(term in title_lower for term in ["qaror", "постановление", "пкм", "пп"]):
-        h_boost = 0.00
+        h_boost = 0.01
 
-    # 2. Тип структурной единицы: статья закона/кодекса содержит общую правовую норму
+    # 2. Пенализация процедурных постановлений палат парламента (Олий Мажлис / Сенат) об одобрении/принятии законов
+    penalty = 0.0
+    is_procedural_vote = (
+        any(term in title_lower for term in ["ma'qullansin", "qabul qilinsin", "ma'qullash to'g'risida", "qabul qilish haqida"])
+        or (
+            any(p_marker in title_lower for p_marker in ["sq-", "iv-son", "senat qarori", "qonunchilik palatasining"])
+            and any(phrase in content_lower for phrase in ["qonuni ma'qullansin", "qonuni qabul qilinsin", "senatga yuborilsin", "qonun qabul qilinsin", "qonun ma'qullansin"])
+        )
+    )
+    if is_procedural_vote:
+        penalty += 0.35
+
+    # 3. Тип структурной единицы: статья закона/кодекса содержит общую правовую норму
     u_boost = 0.0
     if result.unit_type == "article" or (result.unit_number and "modda" in str(result.unit_number)):
         u_boost = 0.04
     elif result.unit_type == "clause":
         u_boost = 0.01
 
-    # 3. Совпадение темы вопроса с заголовком статьи / рубрики (Breadcrumb) с учетом стемминга
+    # 4. Совпадение темы вопроса с заголовком статьи / рубрики (Breadcrumb) с учетом стемминга
     target_text = f"{unit_title_lower} {breadcrumb_str}"
     q_stems = {stem_uz_word(w) for w in re.findall(r"\b\w{3,}\b", q_lower)}
     target_stems = {stem_uz_word(w) for w in re.findall(r"\b\w{3,}\b", target_text)}
     title_overlap = len(q_stems & target_stems)
     t_boost = min(0.08, title_overlap * 0.02)
 
-    # 4. Пенализация процедурных декларативных/санкционных статей
-    penalty = 0.0
+    # 5. Пенализация процедурных декларативных/санкционных статей
     is_liability_query = any(
         w in q_lower
         for w in [
