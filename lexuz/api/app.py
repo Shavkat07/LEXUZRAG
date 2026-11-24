@@ -9,7 +9,22 @@ FastAPI фабрика приложения Legal RAG Lex.uz:
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import Any
+
+# Auto-load .env
+_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+if _env_path.exists():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        pass
+
+# Ensure PyTorch CUDA memory allocator doesn't fragment
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware

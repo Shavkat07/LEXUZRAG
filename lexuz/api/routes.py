@@ -70,8 +70,9 @@ def get_health() -> HealthResponse:
     qdrant_info: Dict[str, Any] = {"status": "unknown"}
 
     try:
-        if hasattr(engine.search_service, "retriever") and hasattr(engine.search_service.retriever, "qdrant_manager"):
-            mgr = engine.search_service.retriever.qdrant_manager
+        retriever = getattr(engine.search_service, "retriever", None)
+        mgr = getattr(retriever, "manager", None) or getattr(retriever, "qdrant_manager", None)
+        if mgr is not None and hasattr(mgr, "client"):
             collections = mgr.client.get_collections().collections
             names = [c.name for c in collections]
             coll_info = mgr.client.get_collection("lexuz_collection")
